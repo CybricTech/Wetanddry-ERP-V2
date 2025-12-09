@@ -31,6 +31,21 @@ model Truck {
   parts              Part[]
   fuelLogs           FuelLog[]
   exceptionLogs      ExceptionLog[]
+  documents          TruckDocument[]
+}
+
+model TruckDocument {
+  id               String   @id @default(cuid())
+  truckId          String
+  truck            Truck    @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  name             String
+  type             String   // "Registration", "Insurance", "Inspection", "Maintenance", "Other"
+  url              String
+  cloudinaryPublicId String
+  expiryDate       DateTime?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model MaintenanceRecord {
