@@ -13,6 +13,7 @@ const modules = [
     { id: 'fuel', name: 'Diesel Management', icon: Fuel, href: '/fuel' },
     { id: 'production', name: 'Mixology (Recipes)', icon: FlaskConical, href: '/production' },
     { id: 'exceptions', name: 'Exception Handling', icon: AlertTriangle, href: '/exceptions' },
+    { id: 'staff', name: 'Staff Registry', icon: Users, href: '/staff' },
     // { id: 'users', name: 'User Management', icon: Users, href: '/users' },
     // { id: 'settings', name: 'Settings', icon: Settings, href: '/settings' },
 ];

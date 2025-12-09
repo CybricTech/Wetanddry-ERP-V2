@@ -1,13 +1,21 @@
 import { v2 as cloudinary } from 'cloudinary';
 
 // Configure Cloudinary
+const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+const apiKey = process.env.CLOUDINARY_API_KEY;
+const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+if (!cloudName || !apiKey || !apiSecret) {
+    console.error('MISSING CLOUDINARY CONFIGURATION:', { cloudName, apiKey, apiSecret: apiSecret ? '***' : undefined });
+}
+
 cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+    cloud_name: cloudName,
+    api_key: apiKey,
+    api_secret: apiSecret,
 });
 
-export async function uploadToCloudinary(file: File, folder: string) {
+export async function uploadToCloudinary(file: File, folder: string, resourceType: 'auto' | 'raw' | 'image' | 'video' = 'auto') {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -15,7 +23,7 @@ export async function uploadToCloudinary(file: File, folder: string) {
         cloudinary.uploader.upload_stream(
             {
                 folder,
-                resource_type: 'auto',
+                resource_type: resourceType,
             },
             (error, result) => {
                 if (error) {
