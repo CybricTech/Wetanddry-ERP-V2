@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
-import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
 
 // ============ TRUCK CRUD OPERATIONS ============
 
@@ -64,9 +63,6 @@ export async function getTruck(id: string) {
             fuelLogs: {
                 orderBy: { date: 'desc' },
                 take: 10
-            },
-            documents: {
-                orderBy: { createdAt: 'desc' }
             }
         },
     })
@@ -147,7 +143,7 @@ export async function createMaintenanceRecord(formData: FormData) {
     // Update truck's last service date
     await prisma.truck.update({
         where: { id: truckId },
-        data: {
+        data: { 
             lastServiceDate: new Date(date),
             mileage: mileageAtService ? parseInt(mileageAtService) : undefined
         },
@@ -257,10 +253,10 @@ export async function completeScheduledMaintenance(scheduleId: string, formData:
     })
 
     // Update schedule with next due date/mileage
-    const newDueDate = schedule.intervalDays
+    const newDueDate = schedule.intervalDays 
         ? new Date(Date.now() + schedule.intervalDays * 24 * 60 * 60 * 1000)
         : null
-    const newDueMileage = schedule.intervalMileage
+    const newDueMileage = schedule.intervalMileage 
         ? schedule.truck.mileage + schedule.intervalMileage
         : null
 
@@ -305,7 +301,7 @@ export async function createPart(formData: FormData) {
 
     // Get truck's current mileage
     const truck = await prisma.truck.findUnique({ where: { id: truckId } })
-
+    
     // Calculate expected replacement date
     const installDate = new Date(installedDate)
     const expectedReplacementDate = new Date(installDate)
@@ -411,7 +407,7 @@ export async function getSpareParts() {
 export async function updateSparePartQuantity(id: string, quantity: number) {
     await prisma.sparePartInventory.update({
         where: { id },
-        data: {
+        data: { 
             quantity,
             lastRestocked: new Date()
         },
@@ -499,10 +495,10 @@ export async function getFleetStats() {
     const availableTrucks = trucks.filter(t => t.status === 'Available').length
     const inUseTrucks = trucks.filter(t => t.status === 'In Use').length
     const maintenanceTrucks = trucks.filter(t => t.status === 'Maintenance').length
-
+    
     const totalMaintenanceCost = maintenanceRecords.reduce((sum, r) => sum + r.cost, 0)
-    const avgMaintenanceCost = maintenanceRecords.length > 0
-        ? totalMaintenanceCost / maintenanceRecords.length
+    const avgMaintenanceCost = maintenanceRecords.length > 0 
+        ? totalMaintenanceCost / maintenanceRecords.length 
         : 0
 
     return {
@@ -513,57 +509,5 @@ export async function getFleetStats() {
         totalMaintenanceCost,
         avgMaintenanceCost,
         maintenanceCount: maintenanceRecords.length
-    }
-}
-
-// ============ TRUCK DOCUMENTS ============
-
-export async function uploadTruckDocument(formData: FormData) {
-    const truckId = formData.get('truckId') as string
-    const name = formData.get('name') as string
-    const type = formData.get('type') as string
-    const expiryDate = formData.get('expiryDate') as string
-    const notes = formData.get('notes') as string
-    const file = formData.get('file') as File
-
-    if (!truckId || !name || !type || !file) {
-        throw new Error('Missing required fields')
-    }
-
-    try {
-        const uploadResult = await uploadToCloudinary(file, 'wet-and-dry/truck-documents')
-
-        await prisma.truckDocument.create({
-            data: {
-                truckId,
-                name,
-                type,
-                url: uploadResult.secure_url,
-                cloudinaryPublicId: uploadResult.public_id,
-                expiryDate: expiryDate ? new Date(expiryDate) : null,
-                notes: notes || null,
-            },
-        })
-
-        revalidatePath(`/trucks/${truckId}`)
-    } catch (error) {
-        console.error('Failed to upload document:', error)
-        throw new Error('Failed to upload document')
-    }
-}
-
-export async function deleteTruckDocument(id: string, truckId: string) {
-    try {
-        const document = await prisma.truckDocument.findUnique({ where: { id } })
-        if (!document) throw new Error('Document not found')
-
-        await deleteFromCloudinary(document.cloudinaryPublicId)
-
-        await prisma.truckDocument.delete({ where: { id } })
-
-        revalidatePath(`/trucks/${truckId}`)
-    } catch (error) {
-        console.error('Failed to delete document:', error)
-        throw new Error('Failed to delete document')
     }
 }

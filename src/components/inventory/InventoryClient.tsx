@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
 import {
     Package, AlertTriangle, ArrowUpRight, ArrowDownRight, Database, Search, Filter,
     Plus, ChevronDown, Clock, CheckCircle2, XCircle, Warehouse, FlaskConical,
     Calendar, DollarSign, Layers, Settings, Eye, Edit, Trash2, X, Loader2,
-    AlertCircle, TrendingUp, TrendingDown, BarChart3
+    AlertCircle, TrendingUp, TrendingDown, BarChart3, History, Info, Save
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -80,15 +80,20 @@ export default function InventoryClient({
     locations,
     pendingRequests
 }: InventoryClientProps) {
-    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'requests' | 'expiring'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'requests' | 'expiring'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [showStockModal, setShowStockModal] = useState(false);
     const [showItemModal, setShowItemModal] = useState(false);
     const [showRequestModal, setShowRequestModal] = useState(false);
+    const [showSiloModal, setShowSiloModal] = useState(false);
+    const [showLoadCementModal, setShowLoadCementModal] = useState(false);
+    const [selectedSilo, setSelectedSilo] = useState<SiloStat | null>(null);
     const [modalType, setModalType] = useState<'in' | 'out'>('in');
+    const [showViewItemModal, setShowViewItemModal] = useState(false);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
     const [isPending, startTransition] = useTransition();
+    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     // Filter items based on search and category
     const filteredItems = items.filter(item => {
@@ -199,6 +204,7 @@ export default function InventoryClient({
                     {[
                         { id: 'overview', label: 'Overview', icon: <BarChart3 size={18} /> },
                         { id: 'items', label: 'All Items', icon: <Package size={18} /> },
+                        { id: 'silos', label: 'Silo Management', icon: <Database size={18} /> },
                         { id: 'requests', label: `Requests ${pendingRequests.length > 0 ? `(${pendingRequests.length})` : ''}`, icon: <Clock size={18} /> },
                         { id: 'expiring', label: 'Expiring Items', icon: <AlertCircle size={18} /> }
                     ].map(tab => (
@@ -385,7 +391,11 @@ export default function InventoryClient({
                                                 >
                                                     <ArrowUpRight size={16} />
                                                 </button>
-                                                <button className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors" title="View Details">
+                                                <button
+                                                    onClick={() => { setSelectedItem(item); setShowViewItemModal(true); }}
+                                                    className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                                                    title="View Details"
+                                                >
                                                     <Eye size={16} />
                                                 </button>
                                             </div>
@@ -394,6 +404,143 @@ export default function InventoryClient({
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'silos' && (
+                <div className="space-y-6">
+                    {/* Silo Management Header */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">Cement Silo Management</h3>
+                            <p className="text-sm text-gray-500 mt-1">Manage silos and cement inventory</p>
+                        </div>
+                        <button
+                            onClick={() => { setSelectedSilo(null); setShowSiloModal(true); }}
+                            className="px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-xl hover:from-indigo-600 hover:to-indigo-700 font-medium shadow-lg shadow-indigo-500/25 flex items-center gap-2 transition-all"
+                        >
+                            <Plus size={18} />
+                            Add New Silo
+                        </button>
+                    </div>
+
+                    {/* Silo Grid */}
+                    {siloStats.length === 0 ? (
+                        <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+                            <Database size={48} className="mx-auto text-gray-300 mb-4" />
+                            <h4 className="text-lg font-medium text-gray-600">No Silos Configured</h4>
+                            <p className="text-sm text-gray-400 mt-1">Add your first silo to start tracking cement inventory</p>
+                            <button
+                                onClick={() => { setSelectedSilo(null); setShowSiloModal(true); }}
+                                className="mt-4 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"
+                            >
+                                Create Silo
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                            {siloStats.map(silo => (
+                                <div key={silo.id} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm relative overflow-hidden">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h4 className="text-lg font-bold text-gray-900">{silo.name}</h4>
+                                            <p className="text-sm text-gray-500">{silo.itemName || 'No cement loaded'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn(
+                                                "px-2.5 py-1 text-xs font-semibold rounded-full",
+                                                silo.status === 'Low' ? "bg-red-100 text-red-800" :
+                                                    silo.status === 'High' ? "bg-amber-100 text-amber-800" :
+                                                        silo.status === 'Optimal' ? "bg-emerald-100 text-emerald-800" :
+                                                            "bg-gray-100 text-gray-800"
+                                            )}>
+                                                {silo.status}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Silo Level Visualization */}
+                                    <div className="relative h-32 bg-gray-100 rounded-xl overflow-hidden border border-gray-200 mb-4">
+                                        <div
+                                            className={cn(
+                                                "absolute bottom-0 left-0 w-full transition-all duration-700 ease-in-out",
+                                                silo.status === 'Low' ? "bg-gradient-to-t from-red-500 to-red-400" :
+                                                    silo.status === 'High' ? "bg-gradient-to-t from-amber-500 to-amber-400" :
+                                                        "bg-gradient-to-t from-indigo-600 to-indigo-400"
+                                            )}
+                                            style={{ height: `${Math.min(silo.percentage, 100)}%` }}
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <span className="text-2xl font-bold text-gray-700 bg-white/80 px-3 py-1 rounded-lg shadow">
+                                                {silo.percentage.toFixed(0)}%
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-between text-sm mb-4">
+                                        <div>
+                                            <span className="text-gray-500">Current Level</span>
+                                            <div className="font-bold text-gray-900">
+                                                {silo.currentLevel.toLocaleString()} {silo.unit}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-gray-500">Capacity</span>
+                                            <div className="font-bold text-gray-700">
+                                                {silo.maxCapacity.toLocaleString()} {silo.unit}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => { setSelectedSilo(silo); setShowLoadCementModal(true); }}
+                                            className="flex-1 py-2 px-3 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"
+                                        >
+                                            <ArrowDownRight size={16} />
+                                            Load Cement
+                                        </button>
+                                        <button
+                                            onClick={() => { setSelectedSilo(silo); setShowSiloModal(true); }}
+                                            className="py-2 px-3 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                                            title="Edit Silo"
+                                        >
+                                            <Edit size={16} />
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                if (confirm(`Are you sure you want to delete ${silo.name}?`)) {
+                                                    startTransition(async () => {
+                                                        try {
+                                                            const { deleteSilo } = await import('@/lib/actions/inventory');
+                                                            await deleteSilo(silo.id);
+                                                            setMessage({ type: 'success', text: `${silo.name} deleted successfully` });
+                                                        } catch (error: any) {
+                                                            setMessage({ type: 'error', text: error.message });
+                                                        }
+                                                    });
+                                                }
+                                            }}
+                                            className="py-2 px-3 bg-red-50 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+                                            title="Delete Silo"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Info Box */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                        <AlertCircle className="text-blue-600 mt-0.5 flex-shrink-0" size={20} />
+                        <div className="text-sm text-blue-800">
+                            <span className="font-semibold">Tip:</span> Use "Load Cement" to add stock to a silo, or "Add Item" in the header to add other inventory items to storage locations.
+                            Silos are specifically designed for cement storage and are used during production runs.
+                        </div>
                     </div>
                 </div>
             )}
@@ -468,6 +615,47 @@ export default function InventoryClient({
                     items={items}
                     onClose={() => setShowRequestModal(false)}
                 />
+            )}
+
+            {/* Silo Management Modal */}
+            {showSiloModal && (
+                <SiloModal
+                    silo={selectedSilo}
+                    onClose={() => { setShowSiloModal(false); setSelectedSilo(null); }}
+                />
+            )}
+
+            {/* Load Cement Modal */}
+            {showLoadCementModal && selectedSilo && (
+                <LoadCementModal
+                    silo={selectedSilo}
+                    onClose={() => { setShowLoadCementModal(false); setSelectedSilo(null); }}
+                />
+            )}
+
+            {/* View/Edit Item Modal */}
+            {showViewItemModal && selectedItem && (
+                <ViewItemModal
+                    item={selectedItem}
+                    locations={locations}
+                    onClose={() => { setShowViewItemModal(false); setSelectedItem(null); }}
+                />
+            )}
+
+            {/* Message Toast */}
+            {message && (
+                <div className={cn(
+                    "fixed bottom-6 right-6 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom duration-300 z-50",
+                    message.type === 'success'
+                        ? "bg-emerald-600 text-white"
+                        : "bg-red-600 text-white"
+                )}>
+                    {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+                    <span className="font-medium">{message.text}</span>
+                    <button onClick={() => setMessage(null)} className="ml-2 hover:bg-white/20 p-1 rounded">
+                        <X size={16} />
+                    </button>
+                </div>
             )}
         </div>
     );
@@ -1125,6 +1313,667 @@ function MaterialRequestModal({ items, onClose }: {
                     </div>
                 </form>
             </div>
+        </div>
+    );
+}
+
+// ==================== SILO MODAL ====================
+
+function SiloModal({ silo, onClose }: {
+    silo: SiloStat | null;
+    onClose: () => void;
+}) {
+    const [isPending, startTransition] = useTransition();
+    const isEditing = !!silo;
+
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+
+        startTransition(async () => {
+            if (isEditing) {
+                const { updateSilo } = await import('@/lib/actions/inventory');
+                await updateSilo(silo!.id, formData);
+            } else {
+                const { createSilo } = await import('@/lib/actions/inventory');
+                await createSilo(formData);
+            }
+            onClose();
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="p-6 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Database size={24} />
+                            <h3 className="text-xl font-bold">{isEditing ? 'Edit Silo' : 'Add New Silo'}</h3>
+                        </div>
+                        <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                            <X size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Silo Name *</label>
+                        <input
+                            type="text"
+                            name="name"
+                            defaultValue={silo?.name || ''}
+                            required
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                            placeholder="e.g., Silo 3"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                        <textarea
+                            name="description"
+                            rows={2}
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all resize-none"
+                            placeholder="e.g., Secondary cement storage - Grade 52.5"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Capacity (kg)</label>
+                        <input
+                            type="number"
+                            name="capacity"
+                            defaultValue={silo?.maxCapacity || 80000}
+                            step="1000"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                            placeholder="Maximum capacity in kg"
+                        />
+                    </div>
+
+                    {isEditing && (
+                        <input type="hidden" name="isActive" value="true" />
+                    )}
+
+                    <div className="flex gap-3 pt-4">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isPending}
+                            className="flex-1 py-3 px-4 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-indigo-700 transition-all flex items-center justify-center gap-2"
+                        >
+                            {isPending && <Loader2 size={18} className="animate-spin" />}
+                            {isPending ? 'Saving...' : isEditing ? 'Update Silo' : 'Create Silo'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// ==================== LOAD CEMENT MODAL ====================
+
+function LoadCementModal({ silo, onClose }: {
+    silo: SiloStat;
+    onClose: () => void;
+}) {
+    const [isPending, startTransition] = useTransition();
+    const hasExistingCement = !!silo.itemName;
+
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        formData.set('siloId', silo.id);
+
+        startTransition(async () => {
+            const { addCementToSilo } = await import('@/lib/actions/inventory');
+            await addCementToSilo(formData);
+            onClose();
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="p-6 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <ArrowDownRight size={24} />
+                            <h3 className="text-xl font-bold">Load Cement to {silo.name}</h3>
+                        </div>
+                        <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <p className="text-emerald-100 mt-2 text-sm">
+                        Current Level: {silo.currentLevel.toLocaleString()} {silo.unit} ({silo.percentage.toFixed(1)}%)
+                    </p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Cement Type *</label>
+                        <input
+                            type="text"
+                            name="cementName"
+                            defaultValue={silo.itemName || ''}
+                            required
+                            disabled={hasExistingCement}
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all disabled:bg-gray-50"
+                            placeholder="e.g., Portland Cement (Grade 42.5)"
+                        />
+                        {hasExistingCement && (
+                            <>
+                                <input type="hidden" name="cementName" value={silo.itemName || ''} />
+                                <p className="text-xs text-gray-500 mt-1">Cement type is fixed for this silo</p>
+                            </>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Quantity to Add (kg) *</label>
+                        <input
+                            type="number"
+                            name="quantity"
+                            step="100"
+                            min="100"
+                            required
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                            placeholder="e.g., 10000"
+                        />
+                    </div>
+
+                    {!hasExistingCement && (
+                        <>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Max Capacity (kg)</label>
+                                    <input
+                                        type="number"
+                                        name="maxCapacity"
+                                        defaultValue={silo.maxCapacity || 80000}
+                                        step="1000"
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Min Threshold (kg)</label>
+                                    <input
+                                        type="number"
+                                        name="minThreshold"
+                                        defaultValue={15000}
+                                        step="1000"
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Supplier</label>
+                                <input
+                                    type="text"
+                                    name="supplier"
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                    placeholder="e.g., Dangote Cement Ltd"
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    <div className="flex gap-3 pt-4">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isPending}
+                            className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-emerald-700 transition-all flex items-center justify-center gap-2"
+                        >
+                            {isPending && <Loader2 size={18} className="animate-spin" />}
+                            {isPending ? 'Loading...' : 'Load Cement'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// ==================== VIEW/EDIT ITEM MODAL ====================
+
+function ViewItemModal({ item, locations, onClose }: {
+    item: InventoryItem;
+    locations: StorageLocation[];
+    onClose: () => void;
+}) {
+    const [activeTabModal, setActiveTabModal] = useState<'details' | 'edit' | 'history'>('details');
+    const [isPending, startTransition] = useTransition();
+    const [isEditing, setIsEditing] = useState(false);
+
+    const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+
+        startTransition(async () => {
+            const { updateInventoryItem } = await import('@/lib/actions/inventory');
+            await updateInventoryItem(item.id, formData);
+            setIsEditing(false);
+            onClose();
+        });
+    };
+
+    const handleDelete = async () => {
+        if (!confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        startTransition(async () => {
+            try {
+                const { deleteInventoryItem } = await import('@/lib/actions/inventory');
+                await deleteInventoryItem(item.id);
+                onClose();
+            } catch (error: any) {
+                alert(error.message || 'Failed to delete item');
+            }
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="p-6 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Package size={24} />
+                            <div>
+                                <h3 className="text-xl font-bold">{item.name}</h3>
+                                {item.sku && <p className="text-sm text-indigo-100">SKU: {item.sku}</p>}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className={cn(
+                                "px-3 py-1 text-xs font-semibold rounded-full",
+                                item.quantity <= item.minThreshold
+                                    ? "bg-red-500 text-white"
+                                    : "bg-emerald-500 text-white"
+                            )}>
+                                {item.quantity <= item.minThreshold ? 'Low Stock' : 'In Stock'}
+                            </span>
+                            <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Tab Navigation */}
+                <div className="border-b border-gray-200 px-6 bg-gray-50">
+                    <div className="flex gap-1">
+                        {[
+                            { id: 'details', label: 'Details', icon: <Info size={16} /> },
+                            { id: 'edit', label: 'Edit', icon: <Edit size={16} /> },
+                            { id: 'history', label: 'Transaction History', icon: <History size={16} /> }
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTabModal(tab.id as typeof activeTabModal)}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-3 font-medium transition-all relative",
+                                    activeTabModal === tab.id
+                                        ? "text-indigo-600"
+                                        : "text-gray-600 hover:text-gray-900"
+                                )}
+                            >
+                                {tab.icon}
+                                {tab.label}
+                                {activeTabModal === tab.id && (
+                                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600" />
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Tab Content */}
+                <div className="flex-1 overflow-y-auto p-6">
+                    {activeTabModal === 'details' && (
+                        <div className="grid grid-cols-2 gap-6">
+                            <DetailItem label="Item Name" value={item.name} />
+                            <DetailItem label="SKU" value={item.sku || 'N/A'} />
+                            <DetailItem label="Category" value={item.category} />
+                            <DetailItem label="Item Type" value={item.itemType} />
+                            <DetailItem
+                                label="Current Quantity"
+                                value={`${item.quantity.toLocaleString()} ${item.unit}`}
+                                highlight={item.quantity <= item.minThreshold}
+                            />
+                            <DetailItem label="Min Threshold" value={`${item.minThreshold.toLocaleString()} ${item.unit}`} />
+                            {item.maxCapacity && (
+                                <DetailItem label="Max Capacity" value={`${item.maxCapacity.toLocaleString()} ${item.unit}`} />
+                            )}
+                            <DetailItem label="Unit Cost" value={`₦${item.unitCost.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`} />
+                            <DetailItem
+                                label="Total Value"
+                                value={`₦${item.totalValue.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`}
+                            />
+                            <DetailItem label="Storage Location" value={`${item.location.name} (${item.location.type})`} />
+                            {item.expiryDate && (
+                                <DetailItem
+                                    label="Expiry Date"
+                                    value={new Date(item.expiryDate).toLocaleDateString()}
+                                    highlight={new Date(item.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
+                                />
+                            )}
+                            {item.batchNumber && <DetailItem label="Batch Number" value={item.batchNumber} />}
+                            {item.supplier && <DetailItem label="Supplier" value={item.supplier} />}
+                        </div>
+                    )}
+
+                    {activeTabModal === 'edit' && (
+                        <form onSubmit={handleUpdate} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Item Name *</label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        defaultValue={item.name}
+                                        required
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">SKU</label>
+                                    <input
+                                        type="text"
+                                        name="sku"
+                                        defaultValue={item.sku || ''}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+                                    <select
+                                        name="category"
+                                        defaultValue={item.category}
+                                        required
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    >
+                                        <option value="Raw Material">Raw Material</option>
+                                        <option value="Consumable">Consumable</option>
+                                        <option value="Equipment">Equipment</option>
+                                        <option value="Asset">Asset</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Item Type</label>
+                                    <select
+                                        name="itemType"
+                                        defaultValue={item.itemType}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    >
+                                        <option value="General">General</option>
+                                        <option value="Cement">Cement</option>
+                                        <option value="Aggregate">Aggregate</option>
+                                        <option value="Admixture">Admixture</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Storage Location *</label>
+                                    <select
+                                        name="locationId"
+                                        defaultValue={item.location.id}
+                                        required
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    >
+                                        {locations.map(loc => (
+                                            <option key={loc.id} value={loc.id}>{loc.name} ({loc.type})</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Unit *</label>
+                                    <select
+                                        name="unit"
+                                        defaultValue={item.unit}
+                                        required
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    >
+                                        <option value="kg">Kilograms (kg)</option>
+                                        <option value="liters">Liters</option>
+                                        <option value="pcs">Pieces</option>
+                                        <option value="m³">Cubic Meters (m³)</option>
+                                        <option value="tons">Tons</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Max Capacity</label>
+                                    <input
+                                        type="number"
+                                        name="maxCapacity"
+                                        defaultValue={item.maxCapacity || ''}
+                                        step="0.01"
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Min Threshold *</label>
+                                    <input
+                                        type="number"
+                                        name="minThreshold"
+                                        defaultValue={item.minThreshold}
+                                        step="0.01"
+                                        required
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Unit Cost (₦) *</label>
+                                    <input
+                                        type="number"
+                                        name="unitCost"
+                                        defaultValue={item.unitCost}
+                                        step="0.01"
+                                        required
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Expiry Date</label>
+                                    <input
+                                        type="date"
+                                        name="expiryDate"
+                                        defaultValue={item.expiryDate ? new Date(item.expiryDate).toISOString().split('T')[0] : ''}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
+                                    <input
+                                        type="text"
+                                        name="batchNumber"
+                                        defaultValue={item.batchNumber || ''}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Supplier</label>
+                                    <input
+                                        type="text"
+                                        name="supplier"
+                                        defaultValue={item.supplier || ''}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 pt-4 border-t">
+                                <button
+                                    type="button"
+                                    onClick={handleDelete}
+                                    disabled={isPending}
+                                    className="px-4 py-3 border border-red-200 text-red-700 rounded-xl font-medium hover:bg-red-50 transition-colors flex items-center gap-2"
+                                >
+                                    <Trash2 size={18} />
+                                    Delete Item
+                                </button>
+                                <div className="flex-1" />
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTabModal('details')}
+                                    className="px-4 py-3 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isPending}
+                                    className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {isPending && <Loader2 size={18} className="animate-spin" />}
+                                    {isPending ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {activeTabModal === 'history' && (
+                        <TransactionHistory itemId={item.id} />
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Helper component for detail items
+function DetailItem({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+    return (
+        <div className="bg-gray-50 p-4 rounded-xl">
+            <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{label}</div>
+            <div className={cn(
+                "text-sm font-semibold",
+                highlight ? "text-red-600" : "text-gray-900"
+            )}>
+                {value}
+            </div>
+        </div>
+    );
+}
+
+// Transaction History Component
+function TransactionHistory({ itemId }: { itemId: string }) {
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function loadTransactions() {
+            try {
+                const { getInventoryItemById } = await import('@/lib/actions/inventory');
+                const itemData = await getInventoryItemById(itemId);
+                if (itemData?.transactions) {
+                    setTransactions(itemData.transactions);
+                }
+            } catch (error) {
+                console.error('Failed to load transactions:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+        loadTransactions();
+    }, [itemId]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center py-12">
+                <Loader2 size={32} className="animate-spin text-indigo-500" />
+            </div>
+        );
+    }
+
+    if (transactions.length === 0) {
+        return (
+            <div className="text-center py-12">
+                <History size={48} className="mx-auto text-gray-300 mb-4" />
+                <h4 className="text-lg font-medium text-gray-600">No Transaction History</h4>
+                <p className="text-sm text-gray-400 mt-1">No transactions have been recorded for this item yet</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-3">
+            {transactions.map((txn: any) => (
+                <div key={txn.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className={cn(
+                                    "px-2.5 py-1 text-xs font-semibold rounded-lg",
+                                    txn.type === 'IN' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                                )}>
+                                    {txn.type === 'IN' ? 'Stock In' : 'Stock Out'}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                    {new Date(txn.createdAt).toLocaleDateString('en-NG', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    })}
+                                </span>
+                            </div>
+                            <div className="text-sm font-medium text-gray-900 mb-1">
+                                {txn.type === 'IN' ? '+' : '-'}{txn.quantity.toLocaleString()} units
+                            </div>
+                            {txn.reason && (
+                                <div className="text-sm text-gray-600 mb-1">
+                                    <span className="font-medium">Reason:</span> {txn.reason}
+                                </div>
+                            )}
+                            {txn.notes && (
+                                <div className="text-xs text-gray-500">
+                                    <span className="font-medium">Notes:</span> {txn.notes}
+                                </div>
+                            )}
+                            <div className="text-xs text-gray-500 mt-2">
+                                By: {txn.performedBy} {txn.approvedBy && `• Approved by: ${txn.approvedBy}`}
+                            </div>
+                        </div>
+                        <div className={cn(
+                            "px-2.5 py-1 text-xs font-medium rounded-lg",
+                            txn.status === 'Approved' ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"
+                        )}>
+                            {txn.status}
+                        </div>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }

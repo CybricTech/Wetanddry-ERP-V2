@@ -23,17 +23,28 @@ export async function getInventoryStats() {
     ).length
 
     // Get silo statistics
-    const siloItems = items.filter(i => i.location.type === 'Silo')
-    const siloStats = siloItems.map(silo => ({
-        id: silo.id,
-        name: silo.location.name,
-        itemName: silo.name,
-        currentLevel: silo.quantity,
-        maxCapacity: silo.maxCapacity || 10000,
-        percentage: silo.maxCapacity ? (silo.quantity / silo.maxCapacity) * 100 : 60,
-        unit: silo.unit,
-        status: silo.quantity <= silo.minThreshold ? 'Low' : silo.quantity >= (silo.maxCapacity || 10000) * 0.9 ? 'High' : 'Optimal'
-    }))
+    const silos = await prisma.storageLocation.findMany({
+        where: { type: 'Silo', isActive: true },
+        include: { items: { where: { itemType: 'Cement' } } }
+    })
+
+    const siloStats = silos.map(silo => {
+        const item = silo.items[0]
+        const quantity = item?.quantity || 0
+        const maxCapacity = silo.capacity || item?.maxCapacity || 80000
+        const percentage = (quantity / maxCapacity) * 100
+
+        return {
+            id: silo.id,
+            name: silo.name,
+            itemName: item?.name || '',
+            currentLevel: quantity,
+            maxCapacity,
+            percentage,
+            unit: item?.unit || 'kg',
+            status: !item ? 'Empty' : quantity <= (item.minThreshold || 15000) ? 'Low' : quantity >= maxCapacity * 0.9 ? 'High' : 'Optimal'
+        }
+    })
 
     // Group items by category
     const categorizedItems = {
@@ -378,8 +389,248 @@ export async function deleteInventoryItem(id: string) {
     return { success: true }
 }
 
-// ==================== STORAGE LOCATION CRUD ====================
+// ==================== SILO MANAGEMENT ====================
 
+// Get all silos with their cement items
+export async function getSilosWithCement() {
+    const silos = await prisma.storageLocation.findMany({
+        where: { type: 'Silo' },
+        include: {
+            items: {
+                where: { itemType: 'Cement' }
+            }
+        },
+        orderBy: { name: 'asc' }
+    })
+
+    return silos.map(silo => {
+        const cementItem = silo.items[0]
+        const percentage = cementItem?.maxCapacity
+            ? (cementItem.quantity / cementItem.maxCapacity) * 100
+            : 0
+
+        return {
+            id: silo.id,
+            name: silo.name,
+            description: silo.description,
+            capacity: silo.capacity,
+            isActive: silo.isActive,
+            createdAt: silo.createdAt,
+            cementItem: cementItem ? {
+                id: cementItem.id,
+                name: cementItem.name,
+                quantity: cementItem.quantity,
+                maxCapacity: cementItem.maxCapacity,
+                unit: cementItem.unit,
+                minThreshold: cementItem.minThreshold,
+                supplier: cementItem.supplier
+            } : null,
+            percentage,
+            status: !cementItem
+                ? 'Empty'
+                : percentage < 20
+                    ? 'Low'
+                    : percentage > 90
+                        ? 'High'
+                        : 'Optimal'
+        }
+    })
+}
+
+// Create a new silo
+export async function createSilo(formData: FormData) {
+    const name = formData.get('name') as string
+    const description = formData.get('description') as string
+    const capacity = parseFloat(formData.get('capacity') as string) || null
+
+    if (!name) {
+        throw new Error('Silo name is required')
+    }
+
+    // Check for duplicate name
+    const existing = await prisma.storageLocation.findUnique({
+        where: { name }
+    })
+    if (existing) {
+        throw new Error(`A storage location with name "${name}" already exists`)
+    }
+
+    const silo = await prisma.storageLocation.create({
+        data: {
+            name,
+            type: 'Silo',
+            description,
+            capacity,
+            isActive: true
+        }
+    })
+
+    revalidatePath('/inventory')
+    return { success: true, silo }
+}
+
+// Update silo information
+export async function updateSilo(id: string, formData: FormData) {
+    const name = formData.get('name') as string
+    const description = formData.get('description') as string
+    const capacity = parseFloat(formData.get('capacity') as string) || null
+    const isActive = formData.get('isActive') === 'true'
+
+    if (!name) {
+        throw new Error('Silo name is required')
+    }
+
+    // Check for duplicate name (excluding current silo)
+    const existing = await prisma.storageLocation.findFirst({
+        where: {
+            name,
+            id: { not: id }
+        }
+    })
+    if (existing) {
+        throw new Error(`A storage location with name "${name}" already exists`)
+    }
+
+    await prisma.storageLocation.update({
+        where: { id },
+        data: {
+            name,
+            description,
+            capacity,
+            isActive
+        }
+    })
+
+    revalidatePath('/inventory')
+    return { success: true }
+}
+
+// Delete silo (only if empty)
+export async function deleteSilo(id: string) {
+    const silo = await prisma.storageLocation.findUnique({
+        where: { id },
+        include: {
+            items: true,
+            productionRuns: true
+        }
+    })
+
+    if (!silo) {
+        throw new Error('Silo not found')
+    }
+
+    if (silo.type !== 'Silo') {
+        throw new Error('This is not a silo')
+    }
+
+    // Check if silo has items with quantity > 0
+    const hasStock = silo.items.some(item => item.quantity > 0)
+    if (hasStock) {
+        throw new Error('Cannot delete silo with remaining stock. Please empty the silo first.')
+    }
+
+    // Check if silo has production history
+    if (silo.productionRuns.length > 0) {
+        // Just deactivate instead of deleting to preserve history
+        await prisma.storageLocation.update({
+            where: { id },
+            data: { isActive: false }
+        })
+        revalidatePath('/inventory')
+        return { success: true, message: 'Silo deactivated (has production history)' }
+    }
+
+    // Delete associated items first (they should be empty)
+    await prisma.inventoryItem.deleteMany({
+        where: { locationId: id }
+    })
+
+    // Delete the silo
+    await prisma.storageLocation.delete({
+        where: { id }
+    })
+
+    revalidatePath('/inventory')
+    return { success: true, message: 'Silo deleted successfully' }
+}
+
+// Add cement to a silo (creates or updates cement item)
+export async function addCementToSilo(formData: FormData) {
+    const siloId = formData.get('siloId') as string
+    const cementName = formData.get('cementName') as string
+    const quantity = parseFloat(formData.get('quantity') as string)
+    const maxCapacity = parseFloat(formData.get('maxCapacity') as string) || 80000
+    const minThreshold = parseFloat(formData.get('minThreshold') as string) || 15000
+    const unitCost = parseFloat(formData.get('unitCost') as string) || 0.15
+    const supplier = formData.get('supplier') as string
+
+    if (!siloId || !cementName || isNaN(quantity)) {
+        throw new Error('Silo, cement name, and quantity are required')
+    }
+
+    const silo = await prisma.storageLocation.findUnique({
+        where: { id: siloId },
+        include: { items: { where: { itemType: 'Cement' } } }
+    })
+
+    if (!silo || silo.type !== 'Silo') {
+        throw new Error('Invalid silo selected')
+    }
+
+    // Check if silo already has cement
+    const existingCement = silo.items[0]
+
+    if (existingCement) {
+        // Update existing cement quantity (stock in)
+        await prisma.$transaction(async (tx) => {
+            await tx.inventoryItem.update({
+                where: { id: existingCement.id },
+                data: {
+                    quantity: { increment: quantity },
+                    totalValue: (existingCement.quantity + quantity) * existingCement.unitCost
+                }
+            })
+
+            await tx.stockTransaction.create({
+                data: {
+                    itemId: existingCement.id,
+                    type: 'IN',
+                    quantity,
+                    reason: `Cement delivery to ${silo.name}`,
+                    status: 'Approved',
+                    performedBy: 'Storekeeper',
+                    approvedBy: 'System',
+                    approvedAt: new Date()
+                }
+            })
+        })
+    } else {
+        // Create new cement item in silo
+        const sku = `CEM-${Date.now().toString(36).toUpperCase()}`
+        await prisma.inventoryItem.create({
+            data: {
+                name: cementName,
+                sku,
+                category: 'Raw Material',
+                itemType: 'Cement',
+                quantity,
+                maxCapacity,
+                unit: 'kg',
+                minThreshold,
+                unitCost,
+                totalValue: quantity * unitCost,
+                supplier,
+                locationId: siloId
+            }
+        })
+    }
+
+    revalidatePath('/inventory')
+    revalidatePath('/production')
+    return { success: true }
+}
+
+// Create general storage location (warehouse, shelf, etc.)
 export async function createStorageLocation(formData: FormData) {
     const name = formData.get('name') as string
     const type = formData.get('type') as string
@@ -389,13 +640,27 @@ export async function createStorageLocation(formData: FormData) {
         throw new Error('Name and type are required')
     }
 
+    // Check for duplicate name
+    const existing = await prisma.storageLocation.findUnique({
+        where: { name }
+    })
+    if (existing) {
+        throw new Error(`A storage location with name "${name}" already exists`)
+    }
+
     const location = await prisma.storageLocation.create({
-        data: { name, type, description }
+        data: {
+            name,
+            type,
+            description,
+            isActive: true
+        }
     })
 
     revalidatePath('/inventory')
     return { success: true, location }
 }
+
 
 // ==================== SEEDING ====================
 
@@ -404,16 +669,16 @@ export async function seedInitialInventory() {
     if (count === 0) {
         // Create Storage Locations
         const silo1 = await prisma.storageLocation.create({
-            data: { name: 'Silo 1', type: 'Silo', description: 'Primary Cement Storage - 42.5 Grade' }
+            data: { name: 'Silo 1', type: 'Silo', description: 'Primary Cement Storage - 42.5 Grade', capacity: 80000, isActive: true }
         })
         const silo2 = await prisma.storageLocation.create({
-            data: { name: 'Silo 2', type: 'Silo', description: 'Secondary Cement Storage - 52.5 Grade' }
+            data: { name: 'Silo 2', type: 'Silo', description: 'Secondary Cement Storage - 52.5 Grade', capacity: 80000, isActive: true }
         })
         const warehouse = await prisma.storageLocation.create({
-            data: { name: 'Main Warehouse', type: 'Warehouse', description: 'General Storage for Aggregates & Additives' }
+            data: { name: 'Main Warehouse', type: 'Warehouse', description: 'General Storage for Aggregates & Additives', isActive: true }
         })
         const chemRoom = await prisma.storageLocation.create({
-            data: { name: 'Chemical Storage', type: 'Shelf', description: 'Temperature Controlled Admixture Storage' }
+            data: { name: 'Chemical Storage', type: 'Shelf', description: 'Temperature Controlled Admixture Storage', isActive: true }
         })
 
         // Create Silo Items with proper tracking

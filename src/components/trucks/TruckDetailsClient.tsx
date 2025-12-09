@@ -11,9 +11,6 @@ import { cn } from '@/lib/utils'
 import AddMaintenanceModal from './AddMaintenanceModal'
 import ScheduleMaintenanceModal from './ScheduleMaintenanceModal'
 import AddPartModal from './AddPartModal'
-import AddDocumentModal from './AddDocumentModal'
-import { deleteTruckDocument } from '@/lib/actions/trucks'
-import { FileText, Trash2 } from 'lucide-react'
 
 interface TruckData {
     id: string
@@ -68,15 +65,6 @@ interface TruckData {
         mileage: number
         efficiency: number | null
     }[]
-    documents: {
-        id: string
-        name: string
-        type: string
-        url: string
-        expiryDate: Date | null
-        notes: string | null
-        createdAt: Date
-    }[]
 }
 
 interface TruckDetailsClientProps {
@@ -87,8 +75,7 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
     const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
     const [showScheduleModal, setShowScheduleModal] = useState(false)
     const [showPartModal, setShowPartModal] = useState(false)
-    const [showDocumentModal, setShowDocumentModal] = useState(false)
-    const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
+    const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules'>('overview')
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -244,7 +231,6 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                     { id: 'maintenance', label: 'Maintenance', icon: Wrench },
                     { id: 'components', label: 'Components', icon: Cog },
                     { id: 'schedules', label: 'Schedules', icon: CalendarClock },
-                    { id: 'documents', label: 'Documents', icon: FileText },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -587,89 +573,6 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                 </div>
             )}
 
-            {activeTab === 'documents' && (
-                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                    <div className="p-5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
-                        <button
-                            onClick={() => setShowDocumentModal(true)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition-all"
-                        >
-                            <Plus size={16} />
-                            Upload Document
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
-                        {truck.documents.length === 0 ? (
-                            <div className="col-span-full text-center py-12">
-                                <FileText className="mx-auto text-gray-300 mb-3" size={40} />
-                                <p className="text-gray-500">No documents attached yet</p>
-                                <button
-                                    onClick={() => setShowDocumentModal(true)}
-                                    className="mt-3 text-blue-600 hover:text-blue-700 font-medium text-sm"
-                                >
-                                    Upload first document →
-                                </button>
-                            </div>
-                        ) : (
-                            truck.documents.map((doc) => {
-                                const isExpired = doc.expiryDate && new Date(doc.expiryDate) < new Date()
-                                const isExpiringSoon = doc.expiryDate && !isExpired &&
-                                    new Date(doc.expiryDate) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-
-                                return (
-                                    <div key={doc.id} className="border border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-all group relative bg-white">
-                                        <div className="flex items-start justify-between mb-3">
-                                            <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                                                <FileText className="text-blue-500" size={20} />
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        if (confirm('Are you sure you want to delete this document?')) {
-                                                            deleteTruckDocument(doc.id, truck.id)
-                                                        }
-                                                    }}
-                                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <h4 className="font-semibold text-gray-900 mb-1 truncate" title={doc.name}>
-                                            {doc.name}
-                                        </h4>
-                                        <p className="text-sm text-gray-500 mb-4">{doc.type}</p>
-
-                                        {doc.expiryDate && (
-                                            <div className={cn(
-                                                "text-xs px-2 py-1 rounded-md inline-flex items-center gap-1 mb-3",
-                                                isExpired ? "bg-red-100 text-red-700" :
-                                                    isExpiringSoon ? "bg-orange-100 text-orange-700" :
-                                                        "bg-green-100 text-green-700"
-                                            )}>
-                                                <Calendar size={12} />
-                                                Expires: {new Date(doc.expiryDate).toLocaleDateString()}
-                                            </div>
-                                        )}
-
-                                        <a
-                                            href={doc.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="block w-full text-center py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition-colors"
-                                        >
-                                            View Document
-                                        </a>
-                                    </div>
-                                )
-                            })
-                        )}
-                    </div>
-                </div>
-            )}
-
             {/* Modals */}
             {showMaintenanceModal && (
                 <AddMaintenanceModal
@@ -690,12 +593,6 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                     truckId={truck.id}
                     truckMileage={truck.mileage}
                     onClose={() => setShowPartModal(false)}
-                />
-            )}
-            {showDocumentModal && (
-                <AddDocumentModal
-                    truckId={truck.id}
-                    onClose={() => setShowDocumentModal(false)}
                 />
             )}
         </div>

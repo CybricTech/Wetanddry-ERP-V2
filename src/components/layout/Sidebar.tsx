@@ -48,7 +48,7 @@ export function Sidebar({ user }: { user?: any }) {
             <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-blue-800">
                 {modules.map((module) => {
                     const Icon = module.icon;
-                    const isActive = pathname.startsWith(module.href);
+                    const isActive = (pathname || '').startsWith(module.href);
                     return (
                         <Link
                             key={module.id}
