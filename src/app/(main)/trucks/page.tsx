@@ -6,13 +6,18 @@ import {
     TrendingUp, DollarSign
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { auth } from '@/auth'
+import { hasPermission } from '@/lib/permissions'
 
 export default async function TrucksPage() {
-    const [trucks, stats, alerts] = await Promise.all([
+    const [trucks, stats, alerts, session] = await Promise.all([
         getTrucks(),
         getFleetStats(),
-        getFleetAlerts()
+        getFleetAlerts(),
+        auth()
     ])
+
+    const canManageFleet = session?.user?.role ? hasPermission(session.user.role, 'manage_fleet') : false
 
     const criticalAlerts = alerts.filter(a => a.severity === 'critical')
     const warningAlerts = alerts.filter(a => a.severity === 'warning')
@@ -33,13 +38,15 @@ export default async function TrucksPage() {
                         <Package size={20} className="mr-2" />
                         Spare Parts
                     </Link>
-                    <Link
-                        href="/trucks/add"
-                        className="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium shadow-lg shadow-blue-500/25"
-                    >
-                        <Plus size={20} className="mr-2" />
-                        Add New Truck
-                    </Link>
+                    {canManageFleet && (
+                        <Link
+                            href="/trucks/add"
+                            className="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium shadow-lg shadow-blue-500/25"
+                        >
+                            <Plus size={20} className="mr-2" />
+                            Add New Truck
+                        </Link>
+                    )}
                 </div>
             </div>
 
@@ -160,13 +167,15 @@ export default async function TrucksPage() {
                         <Truck className="mx-auto text-gray-300 mb-4" size={64} />
                         <h3 className="text-xl font-semibold text-gray-900 mb-2">No trucks in fleet</h3>
                         <p className="text-gray-500 mb-6">Get started by adding your first truck</p>
-                        <Link
-                            href="/trucks/add"
-                            className="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
-                        >
-                            <Plus size={20} className="mr-2" />
-                            Add New Truck
-                        </Link>
+                        {canManageFleet && (
+                            <Link
+                                href="/trucks/add"
+                                className="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
+                            >
+                                <Plus size={20} className="mr-2" />
+                                Add New Truck
+                            </Link>
+                        )}
                     </div>
                 ) : (
                     trucks.map((truck) => {

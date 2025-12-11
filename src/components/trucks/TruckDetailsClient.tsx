@@ -14,6 +14,7 @@ import AddPartModal from './AddPartModal'
 import AddDocumentModal from './AddDocumentModal'
 import { deleteTruckDocument } from '@/lib/actions/trucks'
 import { FileText, Trash2 } from 'lucide-react'
+import { usePermissions } from '@/hooks/use-permissions'
 
 interface TruckData {
     id: string
@@ -89,6 +90,7 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
     const [showPartModal, setShowPartModal] = useState(false)
     const [showDocumentModal, setShowDocumentModal] = useState(false)
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
+    const { can } = usePermissions()
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -183,22 +185,24 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
-                        <button
-                            onClick={() => setShowScheduleModal(true)}
-                            className="px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 flex items-center gap-2 text-gray-700 font-medium transition-all"
-                        >
-                            <CalendarClock size={18} />
-                            Schedule Maintenance
-                        </button>
-                        <button
-                            onClick={() => setShowMaintenanceModal(true)}
-                            className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 font-medium shadow-lg shadow-blue-500/25 transition-all"
-                        >
-                            <Plus size={18} />
-                            Add Record
-                        </button>
-                    </div>
+                    {can('manage_maintenance') && (
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                onClick={() => setShowScheduleModal(true)}
+                                className="px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 flex items-center gap-2 text-gray-700 font-medium transition-all"
+                            >
+                                <CalendarClock size={18} />
+                                Schedule Maintenance
+                            </button>
+                            <button
+                                onClick={() => setShowMaintenanceModal(true)}
+                                className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 font-medium shadow-lg shadow-blue-500/25 transition-all"
+                            >
+                                <Plus size={18} />
+                                Add Record
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -351,13 +355,15 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                     <div className="p-5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                         <h3 className="text-lg font-semibold text-gray-900">Maintenance History</h3>
-                        <button
-                            onClick={() => setShowMaintenanceModal(true)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition-all"
-                        >
-                            <Plus size={16} />
-                            Add Record
-                        </button>
+                        {can('manage_maintenance') && (
+                            <button
+                                onClick={() => setShowMaintenanceModal(true)}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition-all"
+                            >
+                                <Plus size={16} />
+                                Add Record
+                            </button>
+                        )}
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full">
@@ -419,13 +425,15 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                     <div className="p-5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                         <h3 className="text-lg font-semibold text-gray-900">Component Lifecycle Tracking</h3>
-                        <button
-                            onClick={() => setShowPartModal(true)}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 flex items-center gap-2 text-sm font-medium transition-all"
-                        >
-                            <Plus size={16} />
-                            Add Component
-                        </button>
+                        {can('manage_maintenance') && (
+                            <button
+                                onClick={() => setShowPartModal(true)}
+                                className="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 flex items-center gap-2 text-sm font-medium transition-all"
+                            >
+                                <Plus size={16} />
+                                Add Component
+                            </button>
+                        )}
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full">
@@ -506,13 +514,15 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                     <div className="p-5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                         <h3 className="text-lg font-semibold text-gray-900">Maintenance Schedules</h3>
-                        <button
-                            onClick={() => setShowScheduleModal(true)}
-                            className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 flex items-center gap-2 text-sm font-medium transition-all"
-                        >
-                            <Plus size={16} />
-                            Add Schedule
-                        </button>
+                        {can('manage_maintenance') && (
+                            <button
+                                onClick={() => setShowScheduleModal(true)}
+                                className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 flex items-center gap-2 text-sm font-medium transition-all"
+                            >
+                                <Plus size={16} />
+                                Add Schedule
+                            </button>
+                        )}
                     </div>
                     <div className="p-6 grid gap-4">
                         {truck.maintenanceSchedules.length === 0 ? (
@@ -591,13 +601,15 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                     <div className="p-5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                         <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
-                        <button
-                            onClick={() => setShowDocumentModal(true)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition-all"
-                        >
-                            <Plus size={16} />
-                            Upload Document
-                        </button>
+                        {can('manage_truck_documents') && (
+                            <button
+                                onClick={() => setShowDocumentModal(true)}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition-all"
+                            >
+                                <Plus size={16} />
+                                Upload Document
+                            </button>
+                        )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
                         {truck.documents.length === 0 ? (
@@ -624,16 +636,18 @@ export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
                                                 <FileText className="text-blue-500" size={20} />
                                             </div>
                                             <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        if (confirm('Are you sure you want to delete this document?')) {
-                                                            deleteTruckDocument(doc.id, truck.id)
-                                                        }
-                                                    }}
-                                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                {can('manage_truck_documents') && (
+                                                    <button
+                                                        onClick={() => {
+                                                            if (confirm('Are you sure you want to delete this document?')) {
+                                                                deleteTruckDocument(doc.id, truck.id)
+                                                            }
+                                                        }}
+                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 

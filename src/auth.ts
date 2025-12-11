@@ -15,9 +15,23 @@ async function getUser(email: string) {
     }
 }
 
-export const { auth, signIn, signOut } = NextAuth({
+export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig,
     secret: 'dsjdEd0Kc7D1A7/0iaTLSe98woCbq2OSAmKqoXgNUvA=',
+    callbacks: {
+        async jwt({ token, user }) {
+            if (user) {
+                token.role = user.role;
+            }
+            return token;
+        },
+        async session({ session, token }) {
+            if (token && session.user) {
+                session.user.role = token.role as string;
+            }
+            return session;
+        },
+    },
     providers: [
         Credentials({
             async authorize(credentials) {

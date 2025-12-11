@@ -12,7 +12,9 @@ export const authConfig = {
                 nextUrl.pathname.startsWith('/inventory') ||
                 nextUrl.pathname.startsWith('/production') ||
                 nextUrl.pathname.startsWith('/fuel') ||
-                nextUrl.pathname.startsWith('/exceptions');
+                nextUrl.pathname.startsWith('/exceptions') ||
+                nextUrl.pathname.startsWith('/users') ||
+                nextUrl.pathname.startsWith('/staff');
 
             if (isOnDashboard) {
                 if (isLoggedIn) return true;

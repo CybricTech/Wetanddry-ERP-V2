@@ -271,7 +271,7 @@ function AddRecipeModal({
     )
 }
 
-export default function RecipeManager({ recipes, inventoryItems }: { recipes: Recipe[], inventoryItems: InventoryItem[] }) {
+export default function RecipeManager({ recipes, inventoryItems, canManageRecipes = false }: { recipes: Recipe[], inventoryItems: InventoryItem[], canManageRecipes?: boolean }) {
     const router = useRouter()
     const [isAdding, setIsAdding] = useState(false)
 
@@ -281,7 +281,7 @@ export default function RecipeManager({ recipes, inventoryItems }: { recipes: Re
         return ing ? ing.quantity : '-'
     }
 
-    const RecipeRow = ({ recipe, index }: { recipe: Recipe; index: number }) => (
+    const RecipeRow = ({ recipe, index, canManageRecipes }: { recipe: Recipe; index: number; canManageRecipes: boolean }) => (
         <tr className="hover:bg-gray-50 border-b border-gray-100 last:border-0 transition-colors">
             <td className="py-4 px-4 text-sm text-gray-500 font-mono">{String(index + 1).padStart(2, '0')}</td>
             <td className="py-4 px-4">
@@ -302,18 +302,20 @@ export default function RecipeManager({ recipes, inventoryItems }: { recipes: Re
                 </span>
             </td>
             <td className="py-4 px-4 text-right">
-                <button
-                    onClick={async () => {
-                        if (confirm('Are you sure you want to delete this recipe?')) {
-                            const res = await deleteRecipe(recipe.id)
-                            if (!res.success) alert(res.message)
-                        }
-                    }}
-                    className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-all"
-                    title="Delete Recipe"
-                >
-                    <Trash2 className="w-4 h-4" />
-                </button>
+                {canManageRecipes && (
+                    <button
+                        onClick={async () => {
+                            if (confirm('Are you sure you want to delete this recipe?')) {
+                                const res = await deleteRecipe(recipe.id)
+                                if (!res.success) alert(res.message)
+                            }
+                        }}
+                        className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-all"
+                        title="Delete Recipe"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                )}
             </td>
         </tr>
     )
@@ -325,13 +327,15 @@ export default function RecipeManager({ recipes, inventoryItems }: { recipes: Re
                     <h2 className="text-xl font-bold text-gray-900">Mix Design Management</h2>
                     <p className="text-sm text-gray-500 mt-1">Configure standard recipes and material ratios per cubic meter.</p>
                 </div>
-                <button
-                    onClick={() => setIsAdding(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/25 font-medium"
-                >
-                    <Plus className="w-5 h-5" />
-                    Create New Recipe
-                </button>
+                {canManageRecipes && (
+                    <button
+                        onClick={() => setIsAdding(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/25 font-medium"
+                    >
+                        <Plus className="w-5 h-5" />
+                        Create New Recipe
+                    </button>
+                )}
             </div>
 
             <div className="overflow-x-auto">
@@ -365,7 +369,7 @@ export default function RecipeManager({ recipes, inventoryItems }: { recipes: Re
                             </tr>
                         ) : (
                             recipes.map((recipe, i) => (
-                                <RecipeRow key={recipe.id} recipe={recipe} index={i} />
+                                <RecipeRow key={recipe.id} recipe={recipe} index={i} canManageRecipes={canManageRecipes} />
                             ))
                         )}
                     </tbody>

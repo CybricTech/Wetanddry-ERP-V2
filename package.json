@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@libsql/client": "^0.15.15",
+    "@prisma/adapter-libsql": "^7.1.0",
     "@prisma/client": "^6.19.0",
     "@supabase/supabase-js": "^2.87.1",
     "bcryptjs": "^3.0.3",
@@ -27,6 +29,7 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-hook-form": "^7.68.0",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.1.13"
   },

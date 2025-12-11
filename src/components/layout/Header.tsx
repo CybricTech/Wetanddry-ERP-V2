@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Bell, Search, ChevronDown } from 'lucide-react';
+import { Bell, Search } from 'lucide-react';
 
 export function Header() {
     return (
@@ -26,12 +26,6 @@ export function Header() {
                 <button className="relative p-2 hover:bg-gray-100 rounded-lg">
                     <Bell size={20} className="text-gray-600" />
                     <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                </button>
-
-                {/* Quick Actions Dropdown */}
-                <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    <span className="text-sm font-medium">Quick Actions</span>
-                    <ChevronDown size={16} />
                 </button>
             </div>
         </header>

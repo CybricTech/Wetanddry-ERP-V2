@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import RecipeManager from './RecipeManager';
+import { usePermissions } from '@/hooks/use-permissions';
 
 interface Recipe {
     id: string;
@@ -82,6 +83,10 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSummaryModal, setShowSummaryModal] = useState(false);
     const [summaryData, setSummaryData] = useState<any>(null);
+    const { can } = usePermissions();
+
+    const canLogProduction = can('log_production');
+    const canManageRecipes = can('manage_recipes');
 
     // Calculate required materials for selected recipe and quantity
     const calculateRequirements = () => {
@@ -197,17 +202,19 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
                 >
                     Mix Designs
                 </button>
-                <button
-                    onClick={() => setActiveTab('production')}
-                    className={cn(
-                        "px-6 py-3 font-medium text-sm transition-colors relative rounded-t-lg",
-                        activeTab === 'production'
-                            ? "text-blue-600 bg-blue-50/50 border-b-2 border-blue-600"
-                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                    )}
-                >
-                    Run Production
-                </button>
+                {canLogProduction && (
+                    <button
+                        onClick={() => setActiveTab('production')}
+                        className={cn(
+                            "px-6 py-3 font-medium text-sm transition-colors relative rounded-t-lg",
+                            activeTab === 'production'
+                                ? "text-blue-600 bg-blue-50/50 border-b-2 border-blue-600"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                        )}
+                    >
+                        Run Production
+                    </button>
+                )}
                 <div className="w-px bg-gray-200 my-3 mx-1" />
                 <button
                     onClick={() => setActiveTab('logs')}
@@ -225,10 +232,10 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
 
             {/* Content Area */}
             {activeTab === 'recipes' && (
-                <RecipeManager recipes={recipes} inventoryItems={inventoryItems} />
+                <RecipeManager recipes={recipes} inventoryItems={inventoryItems} canManageRecipes={canManageRecipes} />
             )}
 
-            {activeTab === 'production' && (
+            {activeTab === 'production' && canLogProduction && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Main Production Form */}
                     <div className="lg:col-span-2 space-y-6">

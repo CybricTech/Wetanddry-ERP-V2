@@ -143,22 +143,30 @@ export default async function Dashboard() {
                     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
                         <h3 className="text-lg font-bold text-gray-900 mb-4">Silo Levels</h3>
                         <div className="space-y-4">
-                            {inventory.items.filter(i => i.location.type === 'Silo').map(item => (
-                                <div key={item.id}>
-                                    <div className="flex justify-between text-sm mb-1">
-                                        <span className="font-medium text-gray-700">{item.location.name}</span>
-                                        <span className="text-gray-500">{item.quantity} {item.unit}</span>
-                                    </div>
-                                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                                            style={{ width: '60%' }} // Placeholder logic
-                                        />
-                                    </div>
-                                </div>
-                            ))}
-                            {inventory.items.filter(i => i.location.type === 'Silo').length === 0 && (
+                            {/* Use siloStats from getInventoryStats - accurate silo data from StorageLocation */}
+                            {inventory.siloStats.length === 0 ? (
                                 <p className="text-sm text-gray-500">No silos configured.</p>
+                            ) : (
+                                inventory.siloStats.map(silo => (
+                                    <div key={silo.id}>
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span className="font-medium text-gray-700">{silo.name}</span>
+                                            <span className="text-gray-500">
+                                                {silo.currentLevel.toLocaleString()} {silo.unit}
+                                            </span>
+                                        </div>
+                                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-500 ${silo.status === 'Low' ? 'bg-red-500' :
+                                                        silo.status === 'High' ? 'bg-amber-500' :
+                                                            silo.status === 'Empty' ? 'bg-gray-300' :
+                                                                'bg-blue-600'
+                                                    }`}
+                                                style={{ width: `${Math.min(100, silo.percentage)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))
                             )}
                         </div>
                         <Link href="/inventory" className="block mt-4 text-center text-sm text-blue-600 hover:text-blue-700 font-medium">

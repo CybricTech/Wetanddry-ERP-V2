@@ -5,6 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
+import { auth } from '@/auth'
+import { checkPermission } from '@/lib/permissions'
 
 // Schema for Staff validation
 const StaffSchema = z.object({
@@ -73,6 +75,14 @@ export async function getStaffById(id: string) {
 }
 
 export async function createStaff(data: StaffData) {
+    const session = await auth()
+    if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
+    try {
+        checkPermission(session.user.role, 'manage_staff')
+    } catch (e) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
     const validated = StaffSchema.safeParse(data)
 
     if (!validated.success) {
@@ -93,6 +103,14 @@ export async function createStaff(data: StaffData) {
 }
 
 export async function updateStaff(id: string, data: Partial<StaffData>) {
+    const session = await auth()
+    if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
+    try {
+        checkPermission(session.user.role, 'manage_staff')
+    } catch (e) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
     // For partial updates, we might need a partial schema or just trust the input (with some validation)
     // Here we'll just use the partial of the schema
     const PartialSchema = StaffSchema.partial()
@@ -126,6 +144,14 @@ export async function toggleStaffStatus(id: string, currentStatus: string) {
     // but this action could be for a quick toggle if needed.
     // Let's implement a specific archive action.
 
+    const session = await auth()
+    if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
+    try {
+        checkPermission(session.user.role, 'manage_staff')
+    } catch (e) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
     const newStatus = currentStatus === 'Active' ? 'Terminated' : 'Active' // Example toggle
 
     try {
@@ -142,6 +168,14 @@ export async function toggleStaffStatus(id: string, currentStatus: string) {
 }
 
 export async function uploadStaffDocument(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
+    try {
+        checkPermission(session.user.role, 'manage_staff')
+    } catch (e) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
     const file = formData.get('file') as File
     const staffId = formData.get('staffId') as string
     const name = formData.get('name') as string
@@ -204,6 +238,14 @@ export async function addStaffDocument(staffId: string, documentData: {
 }
 
 export async function deleteStaffDocument(documentId: string) {
+    const session = await auth()
+    if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
+    try {
+        checkPermission(session.user.role, 'manage_staff')
+    } catch (e) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
     try {
         const doc = await prisma.staffDocument.delete({
             where: { id: documentId }

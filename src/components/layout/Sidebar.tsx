@@ -3,26 +3,44 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Truck, Package, Fuel, FlaskConical, Users, Settings, Menu, LogOut, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, Truck, Package, Fuel, FlaskConical, Users, Settings, Menu, LogOut, AlertTriangle, Loader2, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const modules = [
+import { Permission, hasPermission } from '@/lib/permissions';
+
+const modules: { id: string; name: string; icon: any; href: string; permission?: Permission }[] = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-    { id: 'trucks', name: 'Truck & Asset Management', icon: Truck, href: '/trucks' },
-    { id: 'inventory', name: 'Inventory Management', icon: Package, href: '/inventory' },
-    { id: 'fuel', name: 'Diesel Management', icon: Fuel, href: '/fuel' },
-    { id: 'production', name: 'Mixology (Recipes)', icon: FlaskConical, href: '/production' },
-    { id: 'exceptions', name: 'Exception Handling', icon: AlertTriangle, href: '/exceptions' },
-    { id: 'staff', name: 'Staff Registry', icon: Users, href: '/staff' },
-    // { id: 'users', name: 'User Management', icon: Users, href: '/users' },
-    // { id: 'settings', name: 'Settings', icon: Settings, href: '/settings' },
+    { id: 'trucks', name: 'Truck & Asset Management', icon: Truck, href: '/trucks', permission: 'view_fleet' },
+    { id: 'inventory', name: 'Inventory Management', icon: Package, href: '/inventory', permission: 'view_inventory' },
+    { id: 'fuel', name: 'Diesel Management', icon: Fuel, href: '/fuel', permission: 'view_fuel_logs' },
+    { id: 'production', name: 'Mixology (Recipes)', icon: FlaskConical, href: '/production', permission: 'view_recipes' },
+    { id: 'finance', name: 'Finance & Reports', icon: Wallet, href: '/finance', permission: 'view_financials' },
+    { id: 'exceptions', name: 'Exception Handling', icon: AlertTriangle, href: '/exceptions', permission: 'view_exceptions' },
+    { id: 'staff', name: 'Staff Registry', icon: Users, href: '/staff', permission: 'view_staff' },
+    { id: 'users', name: 'User Management', icon: Users, href: '/users', permission: 'manage_users' },
+    // { id: 'settings', name: 'Settings', icon: Settings, href: '/settings', permission: 'manage_system_settings' },
 ];
 
 import { handleSignOut } from '@/lib/actions/auth';
 
-export function Sidebar({ user }: { user?: any }) {
+interface SidebarUser {
+    name?: string | null;
+    email?: string | null;
+    role?: string;
+}
+
+export function Sidebar({ user }: { user?: SidebarUser }) {
     const [collapsed, setCollapsed] = useState(false);
     const pathname = usePathname();
+
+    // Use the server-provided user role directly - no async loading needed!
+    const userRole = user?.role;
+
+    // Permission check using server-side user role
+    const can = (permission: Permission): boolean => {
+        if (!userRole) return false;
+        return hasPermission(userRole, permission);
+    };
 
     return (
         <aside className={cn(
@@ -48,6 +66,11 @@ export function Sidebar({ user }: { user?: any }) {
             {/* Navigation Menu */}
             <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-blue-800">
                 {modules.map((module) => {
+                    // Filter based on permission using server-side role
+                    if (module.permission && !can(module.permission)) {
+                        return null;
+                    }
+
                     const Icon = module.icon;
                     const isActive = (pathname || '').startsWith(module.href);
                     return (
@@ -78,7 +101,7 @@ export function Sidebar({ user }: { user?: any }) {
                         </div>
                         <div className="flex-1 overflow-hidden">
                             <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
-                            <p className="text-xs text-blue-300 truncate">{user?.email || 'No Email'}</p>
+                            <p className="text-xs text-blue-300 truncate">{userRole || 'No Role'}</p>
                         </div>
                         <form action={handleSignOut}>
                             <button type="submit" className="p-2 hover:bg-blue-800 rounded shrink-0" title="Sign Out">
@@ -88,7 +111,7 @@ export function Sidebar({ user }: { user?: any }) {
                     </div>
                 ) : (
                     <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-blue-900 mx-auto cursor-pointer" title={user?.name}>
+                        <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-blue-900 mx-auto cursor-pointer" title={user?.name || 'User'}>
                             {user?.name?.[0] || 'U'}
                         </div>
                         <form action={handleSignOut}>

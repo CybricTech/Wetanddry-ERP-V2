@@ -2,8 +2,17 @@
 
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
+import { auth } from '@/auth'
+import { checkPermission, hasPermission } from '@/lib/permissions'
+
 
 export async function getFuelLogs() {
+    const session = await auth()
+    // Gracefully handle missing role or missing permission
+    if (!session?.user?.role || !hasPermission(session.user.role, 'view_fuel_logs')) {
+        return []
+    }
+
     return await prisma.fuelLog.findMany({
         include: { truck: true },
         orderBy: { date: 'desc' }
@@ -15,6 +24,11 @@ export async function logFuel(formData: FormData) {
     const liters = parseFloat(formData.get('liters') as string)
     const cost = parseFloat(formData.get('cost') as string)
     const newMileage = parseInt(formData.get('mileage') as string)
+
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'log_fuel')
+
 
     if (!truckId || isNaN(liters) || isNaN(cost) || isNaN(newMileage)) {
         throw new Error('Invalid input')

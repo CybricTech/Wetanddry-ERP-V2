@@ -3,10 +3,17 @@ import { getFuelLogs, logFuel } from '@/lib/actions/fuel';
 import { getTrucks } from '@/lib/actions/trucks';
 import { Fuel, TrendingUp, DollarSign, Droplet } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { auth } from '@/auth';
+import { hasPermission } from '@/lib/permissions';
 
 export default async function FuelPage() {
-    const logs = await getFuelLogs();
-    const trucks = await getTrucks();
+    const [logs, trucks, session] = await Promise.all([
+        getFuelLogs(),
+        getTrucks(),
+        auth()
+    ]);
+
+    const canLogFuel = session?.user?.role ? hasPermission(session.user.role, 'log_fuel') : false;
 
     const totalFuel = logs.reduce((acc, log) => acc + log.liters, 0);
     const totalCost = logs.reduce((acc, log) => acc + log.cost, 0);
@@ -58,85 +65,87 @@ export default async function FuelPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Log Fuel Form */}
-                <div className="lg:col-span-1">
-                    <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-24">
-                        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                            <Fuel className="text-blue-600" />
-                            Log Fuel Issuance
-                        </h2>
+                {/* Log Fuel Form - Only shown to users with log_fuel permission */}
+                {canLogFuel && (
+                    <div className="lg:col-span-1">
+                        <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-24">
+                            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <Fuel className="text-blue-600" />
+                                Log Fuel Issuance
+                            </h2>
 
-                        <form action={logFuel} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Select Truck
-                                </label>
-                                <select
-                                    name="truckId"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    required
+                            <form action={logFuel} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Select Truck
+                                    </label>
+                                    <select
+                                        name="truckId"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        required
+                                    >
+                                        <option value="">Choose a truck...</option>
+                                        {trucks.map(truck => (
+                                            <option key={truck.id} value={truck.id}>{truck.plateNumber} ({truck.model})</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Liters Issued
+                                    </label>
+                                    <input
+                                        name="liters"
+                                        type="number"
+                                        step="0.1"
+                                        placeholder="e.g., 50.0"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Total Cost (₦)
+                                    </label>
+                                    <input
+                                        name="cost"
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="e.g., 45000"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Current Mileage (km)
+                                    </label>
+                                    <input
+                                        name="mileage"
+                                        type="number"
+                                        placeholder="e.g., 12500"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        required
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Used to calculate efficiency since last fill.</p>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                                 >
-                                    <option value="">Choose a truck...</option>
-                                    {trucks.map(truck => (
-                                        <option key={truck.id} value={truck.id}>{truck.plateNumber} ({truck.model})</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Liters Issued
-                                </label>
-                                <input
-                                    name="liters"
-                                    type="number"
-                                    step="0.1"
-                                    placeholder="e.g., 50.0"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Total Cost (₦)
-                                </label>
-                                <input
-                                    name="cost"
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="e.g., 45000"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Current Mileage (km)
-                                </label>
-                                <input
-                                    name="mileage"
-                                    type="number"
-                                    placeholder="e.g., 12500"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    required
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Used to calculate efficiency since last fill.</p>
-                            </div>
-
-                            <button
-                                type="submit"
-                                className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-                            >
-                                Save Log
-                            </button>
-                        </form>
+                                    Save Log
+                                </button>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Fuel Logs List */}
-                <div className="lg:col-span-2">
+                <div className={canLogFuel ? "lg:col-span-2" : "lg:col-span-3"}>
                     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-200">
                             <h3 className="text-lg font-semibold text-gray-900">Recent Fuel Logs</h3>

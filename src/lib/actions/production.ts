@@ -4,6 +4,10 @@
 
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
+import { auth } from '@/auth'
+import { checkPermission } from '@/lib/permissions'
+
+// ============ RECIPE MANAGEMENT ============
 
 export async function getRecipes() {
     return await prisma.recipe.findMany({
@@ -25,6 +29,11 @@ export async function getRecipes() {
 export async function createRecipe(formData: FormData) {
     const productCode = formData.get('productCode') as string
     const name = formData.get('name') as string
+
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_recipes')
+
 
     // Parse ingredients with IDs
     const ingredients = [
@@ -74,6 +83,10 @@ export async function createRecipe(formData: FormData) {
 }
 
 export async function deleteRecipe(id: string) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_recipes')
+
     try {
         await prisma.recipe.delete({ where: { id } })
         revalidatePath('/production')
@@ -143,6 +156,14 @@ export async function getAllInventoryItems() {
 
 export async function createProductionRun(formData: FormData) {
     try {
+        const session = await auth()
+        if (!session?.user?.role) return { success: false, message: 'Unauthorized' }
+        try {
+            checkPermission(session.user.role, 'log_production')
+        } catch (e) {
+            return { success: false, message: 'Unauthorized: Missing log_production permission' }
+        }
+
         const recipeId = formData.get('recipeId') as string
         const quantity = parseFloat(formData.get('quantity') as string)
         const siloId = formData.get('siloId') as string

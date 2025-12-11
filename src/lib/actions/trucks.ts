@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
+import { auth } from '@/auth'
+import { checkPermission } from '@/lib/permissions'
 
 // ============ TRUCK CRUD OPERATIONS ============
 
@@ -19,10 +21,15 @@ export async function createTruck(formData: FormData) {
         throw new Error('Missing required fields')
     }
 
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_fleet')
+
     await prisma.truck.create({
         data: {
             plateNumber,
             model,
+
             capacity,
             purchaseDate: new Date(purchaseDate),
             mileage: parseInt(mileage) || 0,
@@ -80,11 +87,16 @@ export async function updateTruck(id: string, formData: FormData) {
     const mileage = formData.get('mileage') as string
     const status = formData.get('status') as string
 
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_fleet')
+
     await prisma.truck.update({
         where: { id },
         data: {
             plateNumber,
             model,
+
             capacity,
             purchaseDate: new Date(purchaseDate),
             mileage: parseInt(mileage) || 0,
@@ -98,6 +110,10 @@ export async function updateTruck(id: string, formData: FormData) {
 }
 
 export async function deleteTruck(id: string) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_fleet')
+
     await prisma.truck.delete({
         where: { id },
     })
@@ -131,10 +147,15 @@ export async function createMaintenanceRecord(formData: FormData) {
         throw new Error('Missing required fields')
     }
 
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_maintenance')
+
     await prisma.maintenanceRecord.create({
         data: {
             truckId,
             type,
+
             date: new Date(date),
             cost: parseFloat(cost),
             mileageAtService: mileageAtService ? parseInt(mileageAtService) : null,
@@ -184,10 +205,15 @@ export async function createMaintenanceSchedule(formData: FormData) {
         throw new Error('Missing required fields')
     }
 
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_maintenance')
+
     await prisma.maintenanceSchedule.create({
         data: {
             truckId,
             type,
+
             intervalType,
             intervalDays: intervalDays ? parseInt(intervalDays) : null,
             intervalMileage: intervalMileage ? parseInt(intervalMileage) : null,
@@ -218,10 +244,15 @@ export async function updateMaintenanceSchedule(id: string, formData: FormData) 
     const nextDueMileage = formData.get('nextDueMileage') as string
     const isActive = formData.get('isActive') === 'true'
 
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_maintenance')
+
     await prisma.maintenanceSchedule.update({
         where: { id },
         data: {
             nextDueDate: nextDueDate ? new Date(nextDueDate) : null,
+
             nextDueMileage: nextDueMileage ? parseInt(nextDueMileage) : null,
             isActive,
         },
@@ -238,11 +269,16 @@ export async function completeScheduledMaintenance(scheduleId: string, formData:
 
     if (!schedule) throw new Error('Schedule not found')
 
-    const cost = formData.get('cost') as string
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_maintenance')
+
     const notes = formData.get('notes') as string
     const performedBy = formData.get('performedBy') as string
+    const cost = formData.get('cost') as string
 
     // Create maintenance record
+
     await prisma.maintenanceRecord.create({
         data: {
             truckId: schedule.truckId,
@@ -303,7 +339,10 @@ export async function createPart(formData: FormData) {
         throw new Error('Missing required fields')
     }
 
-    // Get truck's current mileage
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_maintenance')
+
     const truck = await prisma.truck.findUnique({ where: { id: truckId } })
 
     // Calculate expected replacement date
@@ -346,6 +385,10 @@ export async function getParts(truckId?: string) {
 }
 
 export async function updatePartStatus(id: string, status: string) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_maintenance')
+
     await prisma.part.update({
         where: { id },
         data: { status },
@@ -357,7 +400,10 @@ export async function replacePart(oldPartId: string, formData: FormData) {
     const oldPart = await prisma.part.findUnique({ where: { id: oldPartId } })
     if (!oldPart) throw new Error('Part not found')
 
-    // Mark old part as replaced
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_maintenance')
+
     await prisma.part.update({
         where: { id: oldPartId },
         data: { status: 'Replaced' },
@@ -384,10 +430,15 @@ export async function createSparePart(formData: FormData) {
         throw new Error('Missing required fields')
     }
 
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_inventory')
+
     await prisma.sparePartInventory.create({
         data: {
             partNumber,
             name,
+
             category,
             description: description || null,
             quantity: parseInt(quantity) || 0,
@@ -409,6 +460,10 @@ export async function getSpareParts() {
 }
 
 export async function updateSparePartQuantity(id: string, quantity: number) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_inventory')
+
     await prisma.sparePartInventory.update({
         where: { id },
         data: {
@@ -530,6 +585,10 @@ export async function uploadTruckDocument(formData: FormData) {
         throw new Error('Missing required fields')
     }
 
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_truck_documents')
+
     try {
         const uploadResult = await uploadToCloudinary(file, 'wet-and-dry/truck-documents')
 
@@ -539,6 +598,7 @@ export async function uploadTruckDocument(formData: FormData) {
                 name,
                 type,
                 url: uploadResult.secure_url,
+
                 cloudinaryPublicId: uploadResult.public_id,
                 expiryDate: expiryDate ? new Date(expiryDate) : null,
                 notes: notes || null,
@@ -553,6 +613,10 @@ export async function uploadTruckDocument(formData: FormData) {
 }
 
 export async function deleteTruckDocument(id: string, truckId: string) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'manage_truck_documents')
+
     try {
         const document = await prisma.truckDocument.findUnique({ where: { id } })
         if (!document) throw new Error('Document not found')

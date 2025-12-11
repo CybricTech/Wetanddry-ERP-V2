@@ -1,14 +1,24 @@
 import React from 'react';
-import { getInventoryStats, getStorageLocations, getMaterialRequests, seedInitialInventory } from '@/lib/actions/inventory';
+import { getInventoryStats, getStorageLocations, getAllStockTransactions, getPendingApprovals, seedInitialInventory } from '@/lib/actions/inventory';
 import InventoryClient from '@/components/inventory/InventoryClient';
+import { auth } from '@/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function InventoryPage() {
-    // Fetch all required data
-    const { items, totalItems, lowStockItems, totalValue, expiringItems, siloStats } = await getInventoryStats();
-    const locations = await getStorageLocations();
-    const pendingRequests = await getMaterialRequests('Pending');
+    // Get current user session
+    const session = await auth();
+    const currentUser = session?.user?.name || session?.user?.email || 'Unknown';
+
+    // Fetch all required data in parallel
+    const [inventoryStats, locations, transactionsData, pendingData] = await Promise.all([
+        getInventoryStats(),
+        getStorageLocations(),
+        getAllStockTransactions({ limit: 100 }),
+        getPendingApprovals()
+    ]);
+
+    const { items, totalItems, lowStockItems, totalValue, expiringItems, siloStats } = inventoryStats;
 
     // Seed initial data if empty
     if (totalItems === 0) {
@@ -24,7 +34,10 @@ export default async function InventoryPage() {
             expiringItems={expiringItems}
             siloStats={siloStats}
             locations={locations}
-            pendingRequests={pendingRequests}
+            transactions={transactionsData.transactions}
+            pendingApprovals={pendingData.pendingQueue}
+            pendingCounts={pendingData.counts}
+            currentUser={currentUser}
         />
     );
 }

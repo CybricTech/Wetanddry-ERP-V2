@@ -1,13 +1,15 @@
 'use client'
 
 import React, { useState, useTransition, useEffect } from 'react';
+import { usePermissions } from '@/hooks/use-permissions';
 import {
     Package, AlertTriangle, ArrowUpRight, ArrowDownRight, Database, Search, Filter,
     Plus, ChevronDown, Clock, CheckCircle2, XCircle, Warehouse, FlaskConical,
     Calendar, DollarSign, Layers, Settings, Eye, Edit, Trash2, X, Loader2,
-    AlertCircle, TrendingUp, TrendingDown, BarChart3, History, Info, Save
+    AlertCircle, TrendingUp, TrendingDown, BarChart3, History, Info, Save, Activity
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ActivityTab, { PendingApproval, StockTransaction } from './ActivityTab';
 
 // Type definitions
 interface StorageLocation {
@@ -33,6 +35,9 @@ interface InventoryItem {
     batchNumber: string | null;
     supplier: string | null;
     location: StorageLocation;
+    status?: string; // 'Pending', 'Active', 'Rejected'
+    createdBy?: string | null;
+    createdAt?: Date;
 }
 
 interface SiloStat {
@@ -67,7 +72,15 @@ interface InventoryClientProps {
     expiringItems: number;
     siloStats: SiloStat[];
     locations: StorageLocation[];
-    pendingRequests: MaterialRequest[];
+    transactions: StockTransaction[];
+    pendingApprovals: PendingApproval[];
+    pendingCounts: {
+        transactions: number;
+        items: number;
+        requests: number;
+        total: number;
+    };
+    currentUser: string;
 }
 
 export default function InventoryClient({
@@ -78,9 +91,12 @@ export default function InventoryClient({
     expiringItems,
     siloStats,
     locations,
-    pendingRequests
+    transactions,
+    pendingApprovals,
+    pendingCounts,
+    currentUser
 }: InventoryClientProps) {
-    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'requests' | 'expiring'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'activity' | 'expiring'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [showStockModal, setShowStockModal] = useState(false);
@@ -93,7 +109,8 @@ export default function InventoryClient({
     const [showViewItemModal, setShowViewItemModal] = useState(false);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
     const [isPending, startTransition] = useTransition();
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const { can } = usePermissions();
 
     // Filter items based on search and category
     const filteredItems = items.filter(item => {
@@ -135,34 +152,42 @@ export default function InventoryClient({
                     <p className="text-gray-600 mt-1">Multi-location stock control with approval workflows</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                    <button
-                        onClick={() => handleStockAction('in')}
-                        className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 font-medium shadow-lg shadow-emerald-500/25 flex items-center gap-2 transition-all"
-                    >
-                        <ArrowDownRight size={20} />
-                        Stock In
-                    </button>
-                    <button
-                        onClick={() => handleStockAction('out')}
-                        className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 font-medium shadow-lg shadow-blue-500/25 flex items-center gap-2 transition-all"
-                    >
-                        <ArrowUpRight size={20} />
-                        Stock Out
-                    </button>
-                    <button
-                        onClick={() => setShowRequestModal(true)}
-                        className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-medium shadow-sm flex items-center gap-2 transition-all"
-                    >
-                        <Plus size={20} />
-                        Material Request
-                    </button>
-                    <button
-                        onClick={() => setShowItemModal(true)}
-                        className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-medium shadow-sm flex items-center gap-2 transition-all"
-                    >
-                        <Package size={20} />
-                        Add Item
-                    </button>
+                    {can('create_stock_transactions') && (
+                        <button
+                            onClick={() => handleStockAction('in')}
+                            className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 font-medium shadow-lg shadow-emerald-500/25 flex items-center gap-2 transition-all"
+                        >
+                            <ArrowDownRight size={20} />
+                            Stock In
+                        </button>
+                    )}
+                    {can('create_stock_transactions') && (
+                        <button
+                            onClick={() => handleStockAction('out')}
+                            className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 font-medium shadow-lg shadow-blue-500/25 flex items-center gap-2 transition-all"
+                        >
+                            <ArrowUpRight size={20} />
+                            Stock Out
+                        </button>
+                    )}
+                    {can('create_material_requests') && (
+                        <button
+                            onClick={() => setShowRequestModal(true)}
+                            className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-medium shadow-sm flex items-center gap-2 transition-all"
+                        >
+                            <Plus size={20} />
+                            Material Request
+                        </button>
+                    )}
+                    {can('create_inventory_item') && (
+                        <button
+                            onClick={() => setShowItemModal(true)}
+                            className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-medium shadow-sm flex items-center gap-2 transition-all"
+                        >
+                            <Package size={20} />
+                            Add Item
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -205,7 +230,7 @@ export default function InventoryClient({
                         { id: 'overview', label: 'Overview', icon: <BarChart3 size={18} /> },
                         { id: 'items', label: 'All Items', icon: <Package size={18} /> },
                         { id: 'silos', label: 'Silo Management', icon: <Database size={18} /> },
-                        { id: 'requests', label: `Requests ${pendingRequests.length > 0 ? `(${pendingRequests.length})` : ''}`, icon: <Clock size={18} /> },
+                        { id: 'activity', label: `Activity ${pendingCounts.total > 0 ? `(${pendingCounts.total})` : ''}`, icon: <Activity size={18} /> },
                         { id: 'expiring', label: 'Expiring Items', icon: <AlertCircle size={18} /> }
                     ].map(tab => (
                         <button
@@ -377,20 +402,24 @@ export default function InventoryClient({
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => handleStockAction('in', item)}
-                                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                                    title="Stock In"
-                                                >
-                                                    <ArrowDownRight size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleStockAction('out', item)}
-                                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                    title="Stock Out"
-                                                >
-                                                    <ArrowUpRight size={16} />
-                                                </button>
+                                                {can('create_stock_transactions') && (
+                                                    <button
+                                                        onClick={() => handleStockAction('in', item)}
+                                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                                        title="Stock In"
+                                                    >
+                                                        <ArrowDownRight size={16} />
+                                                    </button>
+                                                )}
+                                                {can('create_stock_transactions') && (
+                                                    <button
+                                                        onClick={() => handleStockAction('out', item)}
+                                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title="Stock Out"
+                                                    >
+                                                        <ArrowUpRight size={16} />
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => { setSelectedItem(item); setShowViewItemModal(true); }}
                                                     className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
@@ -545,27 +574,12 @@ export default function InventoryClient({
                 </div>
             )}
 
-            {activeTab === 'requests' && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="p-6 border-b border-gray-100">
-                        <h3 className="text-lg font-bold text-gray-900">Material Requests</h3>
-                        <p className="text-sm text-gray-500 mt-1">Review and approve stock requests</p>
-                    </div>
-
-                    {pendingRequests.length === 0 ? (
-                        <div className="p-12 text-center">
-                            <CheckCircle2 size={48} className="mx-auto text-gray-300 mb-4" />
-                            <h4 className="text-lg font-medium text-gray-600">No Pending Requests</h4>
-                            <p className="text-sm text-gray-400 mt-1">All material requests have been processed</p>
-                        </div>
-                    ) : (
-                        <div className="divide-y divide-gray-100">
-                            {pendingRequests.map(request => (
-                                <RequestCard key={request.id} request={request} />
-                            ))}
-                        </div>
-                    )}
-                </div>
+            {activeTab === 'activity' && (
+                <ActivityTab
+                    transactions={transactions}
+                    pendingApprovals={pendingApprovals}
+                    pendingCounts={pendingCounts}
+                />
             )}
 
             {activeTab === 'expiring' && (
@@ -597,6 +611,7 @@ export default function InventoryClient({
                     type={modalType}
                     item={selectedItem}
                     items={items}
+                    currentUser={currentUser}
                     onClose={() => setShowStockModal(false)}
                 />
             )}
@@ -605,6 +620,7 @@ export default function InventoryClient({
             {showItemModal && (
                 <AddItemModal
                     locations={locations}
+                    currentUser={currentUser}
                     onClose={() => setShowItemModal(false)}
                 />
             )}
@@ -697,6 +713,8 @@ function StatsCard({ title, value, icon, color, alert, trend }: {
 }
 
 function SiloCard({ silo, onStockAction }: { silo: SiloStat; onStockAction: (type: 'in' | 'out', item?: InventoryItem) => void }) {
+    const { can } = usePermissions();
+
     const levelColor = silo.status === 'Low' ? 'from-red-500 to-red-400' :
         silo.status === 'High' ? 'from-amber-500 to-amber-400' :
             'from-blue-600 to-blue-400';
@@ -755,34 +773,46 @@ function SiloCard({ silo, onStockAction }: { silo: SiloStat; onStockAction: (typ
                         {silo.currentLevel.toLocaleString()}
                         <span className="text-sm font-normal text-gray-500 ml-1">{silo.unit}</span>
                     </div>
+                    {silo.unit === 'kg' && (
+                        <span className="text-xs text-gray-400">({Math.floor(silo.currentLevel / 50).toLocaleString()} bags)</span>
+                    )}
                 </div>
                 <div className="text-right">
                     <span className="text-sm font-medium text-gray-500">Max Capacity</span>
                     <div className="text-lg font-semibold text-gray-700">
                         {silo.maxCapacity.toLocaleString()} {silo.unit}
                     </div>
+                    {silo.unit === 'kg' && (
+                        <span className="text-xs text-gray-400">({Math.floor(silo.maxCapacity / 50).toLocaleString()} bags)</span>
+                    )}
                 </div>
             </div>
 
             <div className="mt-4 flex gap-2">
-                <button
-                    onClick={() => onStockAction('in')}
-                    className="flex-1 py-2 px-3 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"
-                >
-                    <ArrowDownRight size={16} /> Add Stock
-                </button>
-                <button
-                    onClick={() => onStockAction('out')}
-                    className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center gap-1"
-                >
-                    <ArrowUpRight size={16} /> Remove
-                </button>
+                {can('create_stock_transactions') && (
+                    <button
+                        onClick={() => onStockAction('in')}
+                        className="flex-1 py-2 px-3 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"
+                    >
+                        <ArrowDownRight size={16} /> Add Stock
+                    </button>
+                )}
+                {can('create_stock_transactions') && (
+                    <button
+                        onClick={() => onStockAction('out')}
+                        className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center gap-1"
+                    >
+                        <ArrowUpRight size={16} /> Remove
+                    </button>
+                )}
             </div>
         </div>
     );
 }
 
 function RequestCard({ request }: { request: MaterialRequest }) {
+    const { can } = usePermissions();
+
     const priorityColors = {
         'Urgent': 'bg-red-100 text-red-700 border-red-200',
         'High': 'bg-amber-100 text-amber-700 border-amber-200',
@@ -818,12 +848,16 @@ function RequestCard({ request }: { request: MaterialRequest }) {
                     </p>
                 </div>
                 <div className="flex gap-2">
-                    <button className="p-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors" title="Approve">
-                        <CheckCircle2 size={18} />
-                    </button>
-                    <button className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors" title="Reject">
-                        <XCircle size={18} />
-                    </button>
+                    {can('approve_material_requests') && (
+                        <>
+                            <button className="p-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors" title="Approve">
+                                <CheckCircle2 size={18} />
+                            </button>
+                            <button className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors" title="Reject">
+                                <XCircle size={18} />
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
         </div>
@@ -865,19 +899,41 @@ function ExpiringItemCard({ item }: { item: InventoryItem }) {
 
 // ==================== MODAL COMPONENTS ====================
 
-function StockModal({ type, item, items, onClose }: {
+function StockModal({ type, item, items, currentUser, onClose }: {
     type: 'in' | 'out';
     item: InventoryItem | null;
     items: InventoryItem[];
+    currentUser: string;
     onClose: () => void;
 }) {
     const [isPending, startTransition] = useTransition();
     const [selectedItemId, setSelectedItemId] = useState(item?.id || '');
+    const [quantity, setQuantity] = useState('');
+    const [unitCost, setUnitCost] = useState('');
+    const [updateItemCost, setUpdateItemCost] = useState(false);
+
+    // Get selected item details
+    const selectedItem = items.find(i => i.id === selectedItemId);
+
+    // Calculate total cost
+    const totalCost = quantity && unitCost
+        ? (parseFloat(quantity) * parseFloat(unitCost)).toFixed(2)
+        : '0.00';
+
+    // Update unit cost when item changes
+    useEffect(() => {
+        if (selectedItem) {
+            setUnitCost(selectedItem.unitCost.toString());
+        }
+    }, [selectedItem]);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         formData.set('type', type === 'in' ? 'IN' : 'OUT');
+        formData.set('performedBy', currentUser);
+        formData.set('receivedBy', currentUser);
+        formData.set('updateItemCost', updateItemCost.toString());
 
         startTransition(async () => {
             const { createStockTransaction } = await import('@/lib/actions/inventory');
@@ -886,17 +942,34 @@ function StockModal({ type, item, items, onClose }: {
         });
     };
 
+    const isStockIn = type === 'in';
+
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className={cn(
+                "bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col",
+                isStockIn ? "max-w-2xl max-h-[90vh]" : "max-w-md"
+            )}>
+                {/* Header */}
                 <div className={cn(
                     "p-6 text-white",
-                    type === 'in' ? "bg-gradient-to-r from-emerald-500 to-emerald-600" : "bg-gradient-to-r from-blue-500 to-blue-600"
+                    isStockIn
+                        ? "bg-gradient-to-r from-emerald-500 to-emerald-600"
+                        : "bg-gradient-to-r from-blue-500 to-blue-600"
                 )}>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            {type === 'in' ? <ArrowDownRight size={24} /> : <ArrowUpRight size={24} />}
-                            <h3 className="text-xl font-bold">{type === 'in' ? 'Stock In' : 'Stock Out'}</h3>
+                            {isStockIn ? <ArrowDownRight size={24} /> : <ArrowUpRight size={24} />}
+                            <div>
+                                <h3 className="text-xl font-bold">
+                                    {isStockIn ? 'Receive Stock Delivery' : 'Stock Out'}
+                                </h3>
+                                {isStockIn && (
+                                    <p className="text-emerald-100 text-sm mt-1">
+                                        Record materials received from suppliers
+                                    </p>
+                                )}
+                            </div>
                         </div>
                         <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
                             <X size={20} />
@@ -904,57 +977,218 @@ function StockModal({ type, item, items, onClose }: {
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Item</label>
-                        <select
-                            name="itemId"
-                            value={selectedItemId}
-                            onChange={(e) => setSelectedItemId(e.target.value)}
-                            required
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                        >
-                            <option value="">Choose an item...</option>
-                            {items.map(i => (
-                                <option key={i.id} value={i.id}>{i.name} ({i.location.name})</option>
-                            ))}
-                        </select>
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Material Selection */}
+                    <div className="space-y-4">
+                        <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                            <Package size={18} className="text-gray-500" />
+                            Material Selection
+                        </h4>
+                        <div className="grid grid-cols-1 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Select Material *</label>
+                                <select
+                                    name="itemId"
+                                    value={selectedItemId}
+                                    onChange={(e) => setSelectedItemId(e.target.value)}
+                                    required
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                >
+                                    <option value="">Choose a material...</option>
+                                    {items.map(i => (
+                                        <option key={i.id} value={i.id}>
+                                            {i.name} ({i.location.name}) - Current: {i.quantity.toLocaleString()} {i.unit}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {selectedItem && (
+                                <div className="bg-gray-50 rounded-xl p-4 grid grid-cols-3 gap-4 text-sm">
+                                    <div>
+                                        <span className="text-gray-500">Current Stock</span>
+                                        <p className="font-semibold text-gray-900">
+                                            {selectedItem.quantity.toLocaleString()} {selectedItem.unit}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500">Unit Cost</span>
+                                        <p className="font-semibold text-gray-900">
+                                            ₦{selectedItem.unitCost.toLocaleString()}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500">Supplier</span>
+                                        <p className="font-semibold text-gray-900">
+                                            {selectedItem.supplier || 'N/A'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
-                        <input
-                            type="number"
-                            name="quantity"
-                            step="0.01"
-                            min="0.01"
-                            required
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                            placeholder="Enter quantity"
-                        />
+                    {/* Stock In: Delivery Details Section */}
+                    {isStockIn && (
+                        <div className="space-y-4 border-t border-gray-100 pt-6">
+                            <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                                <Layers size={18} className="text-gray-500" />
+                                Delivery Details
+                            </h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Supplier Name</label>
+                                    <input
+                                        type="text"
+                                        name="supplierName"
+                                        defaultValue={selectedItem?.supplier || ''}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                        placeholder="e.g., Dangote Cement"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Date</label>
+                                    <input
+                                        type="date"
+                                        name="deliveryDate"
+                                        defaultValue={new Date().toISOString().split('T')[0]}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Number</label>
+                                    <input
+                                        type="text"
+                                        name="invoiceNumber"
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                        placeholder="e.g., INV-2024-001"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Waybill/Delivery Note #</label>
+                                    <input
+                                        type="text"
+                                        name="waybillNumber"
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                        placeholder="e.g., WB-12345"
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        {selectedItem?.itemType === 'Cement' ? 'ATC Number' : 'Batch/Lot Number'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name={selectedItem?.itemType === 'Cement' ? 'atcNumber' : 'batchNumber'}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                        placeholder={selectedItem?.itemType === 'Cement' ? 'e.g., ATC-2024-001' : 'e.g., BATCH-2024-DEC-001 (for traceability)'}
+                                    />
+                                    {selectedItem?.itemType === 'Cement' && (
+                                        <p className="text-xs text-gray-500 mt-1">ATC Number for cement traceability</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quantity & Cost Section */}
+                    <div className="space-y-4 border-t border-gray-100 pt-6">
+                        <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                            <DollarSign size={18} className="text-gray-500" />
+                            Quantity & {isStockIn ? 'Cost' : 'Details'}
+                        </h4>
+                        <div className={cn("grid gap-4", isStockIn ? "grid-cols-3" : "grid-cols-1")}>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Quantity {selectedItem ? `(${selectedItem.unit})` : ''} *
+                                </label>
+                                <input
+                                    type="number"
+                                    name="quantity"
+                                    value={quantity}
+                                    onChange={(e) => setQuantity(e.target.value)}
+                                    step="0.01"
+                                    min="0.01"
+                                    required
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                    placeholder="Enter quantity"
+                                />
+                            </div>
+                            {isStockIn && (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Unit Cost (₦)</label>
+                                        <input
+                                            type="number"
+                                            name="unitCostAtTime"
+                                            value={unitCost}
+                                            onChange={(e) => setUnitCost(e.target.value)}
+                                            step="0.01"
+                                            min="0"
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Total Cost</label>
+                                        <div className="px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 font-semibold">
+                                            ₦{parseFloat(totalCost).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        {isStockIn && (
+                            <label className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={updateItemCost}
+                                    onChange={(e) => setUpdateItemCost(e.target.checked)}
+                                    className="w-5 h-5 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                                />
+                                <div>
+                                    <span className="font-medium text-amber-800">Update item's unit cost</span>
+                                    <p className="text-xs text-amber-600">Check this if the price has changed from ₦{selectedItem?.unitCost.toLocaleString() || '0'}</p>
+                                </div>
+                            </label>
+                        )}
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Reason</label>
-                        <input
-                            type="text"
-                            name="reason"
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                            placeholder="e.g., Production batch #123"
-                        />
+                    {/* Reason & Notes */}
+                    <div className="space-y-4 border-t border-gray-100 pt-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                {isStockIn ? 'Reason/Purpose' : 'Reason for Stock Out *'}
+                            </label>
+                            <input
+                                type="text"
+                                name="reason"
+                                required={!isStockIn}
+                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                placeholder={isStockIn ? "e.g., Regular restocking" : "e.g., Production batch #123, Site XYZ"}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Additional Notes</label>
+                            <textarea
+                                name="notes"
+                                rows={2}
+                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all resize-none"
+                                placeholder="Any additional information..."
+                            />
+                        </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
-                        <textarea
-                            name="notes"
-                            rows={2}
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none"
-                            placeholder="Additional notes..."
-                        />
+                    {/* Audit Info */}
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Clock size={16} />
+                            <span>
+                                {isStockIn ? 'Received' : 'Processed'} by <strong>{currentUser}</strong> on {new Date().toLocaleDateString()}
+                            </span>
+                        </div>
                     </div>
 
-                    <div className="flex gap-3 pt-4">
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-4 border-t border-gray-100">
                         <button
                             type="button"
                             onClick={onClose}
@@ -967,14 +1201,14 @@ function StockModal({ type, item, items, onClose }: {
                             disabled={isPending}
                             className={cn(
                                 "flex-1 py-3 px-4 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2",
-                                type === 'in'
+                                isStockIn
                                     ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
                                     : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700",
                                 isPending && "opacity-70 cursor-not-allowed"
                             )}
                         >
                             {isPending && <Loader2 size={18} className="animate-spin" />}
-                            {isPending ? 'Processing...' : 'Confirm'}
+                            {isPending ? 'Processing...' : isStockIn ? 'Record Delivery' : 'Confirm Stock Out'}
                         </button>
                     </div>
                 </form>
@@ -983,8 +1217,10 @@ function StockModal({ type, item, items, onClose }: {
     );
 }
 
-function AddItemModal({ locations, onClose }: {
+
+function AddItemModal({ locations, currentUser, onClose }: {
     locations: StorageLocation[];
+    currentUser: string;
     onClose: () => void;
 }) {
     const [isPending, startTransition] = useTransition();
@@ -992,6 +1228,7 @@ function AddItemModal({ locations, onClose }: {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
+        formData.set('createdBy', currentUser); // Set who created the item
 
         startTransition(async () => {
             const { createInventoryItem } = await import('@/lib/actions/inventory');
@@ -1385,11 +1622,12 @@ function SiloModal({ silo, onClose }: {
                         <input
                             type="number"
                             name="capacity"
-                            defaultValue={silo?.maxCapacity || 80000}
+                            defaultValue={silo?.maxCapacity || 95000}
                             step="1000"
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                             placeholder="Maximum capacity in kg"
                         />
+                        <p className="text-xs text-gray-500 mt-1">95,000 kg = 95 tons = 1,900 bags (50kg each)</p>
                     </div>
 
                     {isEditing && (
@@ -1454,7 +1692,7 @@ function LoadCementModal({ silo, onClose }: {
                         </button>
                     </div>
                     <p className="text-emerald-100 mt-2 text-sm">
-                        Current Level: {silo.currentLevel.toLocaleString()} {silo.unit} ({silo.percentage.toFixed(1)}%)
+                        Current Level: {silo.currentLevel.toLocaleString()} {silo.unit} ({Math.floor(silo.currentLevel / 50).toLocaleString()} bags) • {silo.percentage.toFixed(1)}% full
                     </p>
                 </div>
 
@@ -1483,11 +1721,23 @@ function LoadCementModal({ silo, onClose }: {
                         <input
                             type="number"
                             name="quantity"
-                            step="100"
-                            min="100"
+                            step="50"
+                            min="50"
                             required
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-                            placeholder="e.g., 10000"
+                            placeholder="e.g., 5000 (= 100 bags)"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">1 bag = 50kg. Enter value in kg.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">ATC Number *</label>
+                        <input
+                            type="text"
+                            name="atcNumber"
+                            required
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                            placeholder="e.g., ATC-2024-001"
                         />
                     </div>
 
@@ -1499,7 +1749,7 @@ function LoadCementModal({ silo, onClose }: {
                                     <input
                                         type="number"
                                         name="maxCapacity"
-                                        defaultValue={silo.maxCapacity || 80000}
+                                        defaultValue={silo.maxCapacity || 95000}
                                         step="1000"
                                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
                                     />
@@ -1679,6 +1929,24 @@ function ViewItemModal({ item, locations, onClose }: {
                             )}
                             {item.batchNumber && <DetailItem label="Batch Number" value={item.batchNumber} />}
                             {item.supplier && <DetailItem label="Supplier" value={item.supplier} />}
+
+                            {/* Audit Trail */}
+                            <div className="col-span-2 pt-4 border-t border-gray-200 mt-4">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <Clock size={16} />
+                                    Audit Trail
+                                </h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <DetailItem
+                                        label="Added By"
+                                        value={item.createdBy || 'System'}
+                                    />
+                                    <DetailItem
+                                        label="Added On"
+                                        value={item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}
+                                    />
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -1889,23 +2157,59 @@ function DetailItem({ label, value, highlight }: { label: string; value: string;
 function TransactionHistory({ itemId }: { itemId: string }) {
     const [transactions, setTransactions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const { can } = usePermissions();
+
+    const loadTransactions = async () => {
+        try {
+            const { getInventoryItemById } = await import('@/lib/actions/inventory');
+            const itemData = await getInventoryItemById(itemId);
+            if (itemData?.transactions) {
+                setTransactions(itemData.transactions);
+            }
+        } catch (error) {
+            console.error('Failed to load transactions:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        async function loadTransactions() {
-            try {
-                const { getInventoryItemById } = await import('@/lib/actions/inventory');
-                const itemData = await getInventoryItemById(itemId);
-                if (itemData?.transactions) {
-                    setTransactions(itemData.transactions);
-                }
-            } catch (error) {
-                console.error('Failed to load transactions:', error);
-            } finally {
-                setLoading(false);
-            }
-        }
         loadTransactions();
     }, [itemId]);
+
+    const handleApprove = async (transactionId: string) => {
+        if (!confirm('Approve this stock transaction? This will update the inventory quantity.')) return;
+        setActionLoading(transactionId);
+        try {
+            const { approveStockTransaction } = await import('@/lib/actions/inventory');
+            const result = await approveStockTransaction(transactionId);
+            if (result.success) {
+                await loadTransactions();
+            }
+        } catch (error: any) {
+            alert('Failed to approve: ' + error.message);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleReject = async (transactionId: string) => {
+        const reason = prompt('Enter rejection reason (optional):');
+        if (reason === null) return; // User cancelled
+        setActionLoading(transactionId);
+        try {
+            const { rejectStockTransaction } = await import('@/lib/actions/inventory');
+            const result = await rejectStockTransaction(transactionId, reason);
+            if (result.success) {
+                await loadTransactions();
+            }
+        } catch (error: any) {
+            alert('Failed to reject: ' + error.message);
+        } finally {
+            setActionLoading(null);
+        }
+    };
 
     if (loading) {
         return (
@@ -1965,11 +2269,41 @@ function TransactionHistory({ itemId }: { itemId: string }) {
                                 By: {txn.performedBy} {txn.approvedBy && `• Approved by: ${txn.approvedBy}`}
                             </div>
                         </div>
-                        <div className={cn(
-                            "px-2.5 py-1 text-xs font-medium rounded-lg",
-                            txn.status === 'Approved' ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"
-                        )}>
-                            {txn.status}
+                        <div className="flex flex-col items-end gap-2">
+                            <div className={cn(
+                                "px-2.5 py-1 text-xs font-medium rounded-lg",
+                                txn.status === 'Approved' ? "bg-emerald-100 text-emerald-700" :
+                                    txn.status === 'Rejected' ? "bg-red-100 text-red-700" :
+                                        "bg-amber-100 text-amber-700"
+                            )}>
+                                {txn.status}
+                            </div>
+
+                            {/* Approval buttons for pending transactions */}
+                            {txn.status === 'Pending' && can('approve_stock_transactions') && (
+                                <div className="flex gap-1 mt-2">
+                                    <button
+                                        onClick={() => handleApprove(txn.id)}
+                                        disabled={actionLoading === txn.id}
+                                        className="px-2.5 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                    >
+                                        {actionLoading === txn.id ? (
+                                            <Loader2 size={12} className="animate-spin" />
+                                        ) : (
+                                            <CheckCircle2 size={12} />
+                                        )}
+                                        Approve
+                                    </button>
+                                    <button
+                                        onClick={() => handleReject(txn.id)}
+                                        disabled={actionLoading === txn.id}
+                                        className="px-2.5 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                    >
+                                        <XCircle size={12} />
+                                        Reject
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

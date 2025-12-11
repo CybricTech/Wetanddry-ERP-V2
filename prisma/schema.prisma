@@ -161,6 +161,12 @@ model InventoryItem {
   transactions    StockTransaction[]
   materialRequests MaterialRequest[]
 
+  // Approval workflow
+  status          String   @default("Active") // "Pending", "Active", "Rejected"
+  approvedBy      String?  // Who approved the item
+  approvedAt      DateTime?
+
+  createdBy       String?  // User name who added the item
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -172,8 +178,20 @@ model StockTransaction {
   type        String   // "IN", "OUT", "ADJUSTMENT"
   quantity    Float
   reason      String?
+  
+  // Delivery/Supplier Details (for Stock In)
+  supplierName    String?
+  invoiceNumber   String?
+  waybillNumber   String?
+  deliveryDate    DateTime?
+  batchNumber     String?  // For material traceability (non-cement)
+  atcNumber       String?  // ATC Number for cement deliveries
+  unitCostAtTime  Float?   // Cost per unit at time of delivery
+  totalCost       Float?   // quantity * unitCostAtTime
+  
   status      String   @default("Pending") // "Pending", "Approved", "Rejected"
   performedBy String?  // User ID or Name
+  receivedBy  String?  // Who physically received the delivery
   approvedBy  String?  // Approver for the transaction
   approvedAt  DateTime?
   notes       String?
@@ -287,9 +305,11 @@ model User {
   name      String
   email     String   @unique
   password  String
-  role      String   // "Super Admin", "Operations Manager", "Storekeeper", "Accountant", "Driver"
+  role      String   @default("Storekeeper") // "Super Admin", "Manager", "Storekeeper", "Accountant"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String?  // ID of admin who created this user
+  updatedBy String?  // ID of admin who last modified this user
 }
 
 // Staff Registry Module
