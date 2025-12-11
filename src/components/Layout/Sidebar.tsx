@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Truck, Package, Fuel, FlaskConical, Users, Settings, Menu, LogOut, AlertTriangle, Loader2, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { signOut } from 'next-auth/react';
 
 import { Permission, hasPermission } from '@/lib/permissions';
 
@@ -21,8 +22,6 @@ const modules: { id: string; name: string; icon: any; href: string; permission?:
     // { id: 'settings', name: 'Settings', icon: Settings, href: '/settings', permission: 'manage_system_settings' },
 ];
 
-import { handleSignOut } from '@/lib/actions/auth';
-
 interface SidebarUser {
     name?: string | null;
     email?: string | null;
@@ -31,6 +30,7 @@ interface SidebarUser {
 
 export function Sidebar({ user }: { user?: SidebarUser }) {
     const [collapsed, setCollapsed] = useState(false);
+    const [isSigningOut, setIsSigningOut] = useState(false);
     const pathname = usePathname();
 
     // Use the server-provided user role directly - no async loading needed!
@@ -40,6 +40,21 @@ export function Sidebar({ user }: { user?: SidebarUser }) {
     const can = (permission: Permission): boolean => {
         if (!userRole) return false;
         return hasPermission(userRole, permission);
+    };
+
+    // Client-side sign out that properly clears the session cache
+    const handleClientSignOut = async () => {
+        setIsSigningOut(true);
+        try {
+            // Use next-auth/react's signOut which properly clears the client-side session cache
+            await signOut({ 
+                callbackUrl: '/login',
+                redirect: true 
+            });
+        } catch (error) {
+            console.error('Sign out error:', error);
+            setIsSigningOut(false);
+        }
     };
 
     return (
@@ -103,22 +118,36 @@ export function Sidebar({ user }: { user?: SidebarUser }) {
                             <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
                             <p className="text-xs text-blue-300 truncate">{userRole || 'No Role'}</p>
                         </div>
-                        <form action={handleSignOut}>
-                            <button type="submit" className="p-2 hover:bg-blue-800 rounded shrink-0" title="Sign Out">
+                        <button 
+                            onClick={handleClientSignOut}
+                            disabled={isSigningOut}
+                            className="p-2 hover:bg-blue-800 rounded shrink-0 disabled:opacity-50" 
+                            title="Sign Out"
+                        >
+                            {isSigningOut ? (
+                                <Loader2 size={16} className="animate-spin" />
+                            ) : (
                                 <LogOut size={16} />
-                            </button>
-                        </form>
+                            )}
+                        </button>
                     </div>
                 ) : (
                     <div className="flex flex-col items-center gap-2">
                         <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-blue-900 mx-auto cursor-pointer" title={user?.name || 'User'}>
                             {user?.name?.[0] || 'U'}
                         </div>
-                        <form action={handleSignOut}>
-                            <button type="submit" className="p-2 hover:bg-blue-800 rounded shrink-0 text-gray-300 hover:text-white" title="Sign Out">
+                        <button 
+                            onClick={handleClientSignOut}
+                            disabled={isSigningOut}
+                            className="p-2 hover:bg-blue-800 rounded shrink-0 text-gray-300 hover:text-white disabled:opacity-50" 
+                            title="Sign Out"
+                        >
+                            {isSigningOut ? (
+                                <Loader2 size={16} className="animate-spin" />
+                            ) : (
                                 <LogOut size={16} />
-                            </button>
-                        </form>
+                            )}
+                        </button>
                     </div>
                 )}
             </div>
