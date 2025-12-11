@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
+import { notifyApprovers, notifyRequester } from '@/lib/actions/notifications'
 
 // ==================== INVENTORY STATS & QUERIES ====================
 
@@ -166,6 +167,10 @@ export async function createStockTransaction(formData: FormData) {
     const isAutoApproved = session.user.role === 'Super Admin' || session.user.role === 'Manager';
     const status = isAutoApproved ? 'Approved' : 'Pending';
 
+    // Fetch item details before transaction for use in notifications
+    const inventoryItem = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
+    if (!inventoryItem) throw new Error('Item not found')
+
     await prisma.$transaction(async (tx) => {
         // Get current item
         const item = await tx.inventoryItem.findUnique({ where: { id: itemId } })
@@ -223,6 +228,17 @@ export async function createStockTransaction(formData: FormData) {
             })
         }
     })
+
+    // Notify approvers if transaction is pending
+    if (status === 'Pending') {
+        notifyApprovers(
+            'stock_transaction_pending',
+            `Stock ${type} Pending: ${inventoryItem.name}`,
+            `${performedBy} submitted a ${type === 'IN' ? 'delivery' : 'withdrawal'} of ${quantity} units for approval`,
+            'stock_transaction',
+            itemId
+        ).catch(console.error)
+    }
 
     revalidatePath('/inventory')
     return { success: true }
@@ -416,6 +432,17 @@ export async function createInventoryItem(formData: FormData) {
             approvedAt: isAutoApproved ? new Date() : undefined
         }
     })
+
+    // Notify approvers if item is pending
+    if (status === 'Pending') {
+        notifyApprovers(
+            'new_inventory_item',
+            `New Inventory Item: ${name}`,
+            `${createdBy} submitted "${name}" for approval`,
+            'inventory_item',
+            item.id
+        ).catch(console.error) // Non-blocking
+    }
 
     revalidatePath('/inventory')
     return { success: true, item, status }
@@ -1011,6 +1038,22 @@ export async function approveInventoryItem(itemId: string, quantity: number) {
         }
     })
 
+    // Notify the requester that their item was approved
+    // Look up user by name (createdBy field stores name)
+    if (item.createdBy) {
+        const requester = await prisma.user.findFirst({ where: { name: item.createdBy } })
+        if (requester) {
+            notifyRequester(
+                requester.id,
+                'item_approved',
+                `Item Approved: ${item.name}`,
+                `Your inventory item "${item.name}" has been approved by ${session.user.name}`,
+                'inventory_item',
+                itemId
+            ).catch(console.error)
+        }
+    }
+
     revalidatePath('/inventory')
     return { success: true }
 }
@@ -1033,6 +1076,21 @@ export async function rejectInventoryItem(itemId: string, reason: string) {
             approvedAt: new Date()
         }
     })
+
+    // Notify the requester that their item was rejected
+    if (item.createdBy) {
+        const requester = await prisma.user.findFirst({ where: { name: item.createdBy } })
+        if (requester) {
+            notifyRequester(
+                requester.id,
+                'item_rejected',
+                `Item Rejected: ${item.name}`,
+                `Your inventory item "${item.name}" was rejected. Reason: ${reason}`,
+                'inventory_item',
+                itemId
+            ).catch(console.error)
+        }
+    }
 
     revalidatePath('/inventory')
     return { success: true, reason }

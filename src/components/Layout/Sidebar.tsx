@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { signOut } from 'next-auth/react';
 
 import { Permission, hasPermission } from '@/lib/permissions';
+import NotificationBell from '@/components/notifications/NotificationBell';
+import PushNotificationPrompt from '@/components/notifications/PushNotificationPrompt';
 
 const modules: { id: string; name: string; icon: any; href: string; permission?: Permission }[] = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
@@ -47,9 +49,9 @@ export function Sidebar({ user }: { user?: SidebarUser }) {
         setIsSigningOut(true);
         try {
             // Use next-auth/react's signOut which properly clears the client-side session cache
-            await signOut({ 
+            await signOut({
                 callbackUrl: '/login',
-                redirect: true 
+                redirect: true
             });
         } catch (error) {
             console.error('Sign out error:', error);
@@ -58,99 +60,105 @@ export function Sidebar({ user }: { user?: SidebarUser }) {
     };
 
     return (
-        <aside className={cn(
-            "bg-blue-900 text-white transition-all duration-300 flex flex-col h-screen sticky top-0",
-            collapsed ? "w-20" : "w-64"
-        )}>
-            {/* Logo Area */}
-            <div className="p-4 border-b border-blue-800 flex items-center justify-between">
-                {!collapsed && (
-                    <div className="overflow-hidden whitespace-nowrap">
-                        <h1 className="text-xl font-bold">Wet & Dry Ltd</h1>
-                        <p className="text-xs text-blue-300">Enterprise Management</p>
-                    </div>
-                )}
-                <button
-                    onClick={() => setCollapsed(!collapsed)}
-                    className="p-2 hover:bg-blue-800 rounded ml-auto"
-                >
-                    <Menu size={20} />
-                </button>
-            </div>
-
-            {/* Navigation Menu */}
-            <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-blue-800">
-                {modules.map((module) => {
-                    // Filter based on permission using server-side role
-                    if (module.permission && !can(module.permission)) {
-                        return null;
-                    }
-
-                    const Icon = module.icon;
-                    const isActive = (pathname || '').startsWith(module.href);
-                    return (
-                        <Link
-                            key={module.id}
-                            href={module.href}
-                            className={cn(
-                                "w-full flex items-center gap-3 px-4 py-3 transition-colors",
-                                isActive
-                                    ? "bg-blue-800 border-l-4 border-yellow-400"
-                                    : "hover:bg-blue-800/50 border-l-4 border-transparent"
-                            )}
-                            title={collapsed ? module.name : undefined}
-                        >
-                            <Icon size={20} className="shrink-0" />
-                            {!collapsed && <span className="text-sm font-medium whitespace-nowrap">{module.name}</span>}
-                        </Link>
-                    );
-                })}
-            </nav>
-
-            {/* User Profile Area */}
-            <div className="p-4 border-t border-blue-800">
-                {!collapsed ? (
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-blue-900 shrink-0">
-                            {user?.name?.[0] || 'U'}
+        <>
+            <aside className={cn(
+                "bg-blue-900 text-white transition-all duration-300 flex flex-col h-screen sticky top-0",
+                collapsed ? "w-20" : "w-64"
+            )}>
+                {/* Logo Area */}
+                <div className="p-4 border-b border-blue-800 flex items-center justify-between">
+                    {!collapsed && (
+                        <div className="overflow-hidden whitespace-nowrap">
+                            <h1 className="text-xl font-bold">Wet & Dry Ltd</h1>
+                            <p className="text-xs text-blue-300">Enterprise Management</p>
                         </div>
-                        <div className="flex-1 overflow-hidden">
-                            <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
-                            <p className="text-xs text-blue-300 truncate">{userRole || 'No Role'}</p>
-                        </div>
-                        <button 
-                            onClick={handleClientSignOut}
-                            disabled={isSigningOut}
-                            className="p-2 hover:bg-blue-800 rounded shrink-0 disabled:opacity-50" 
-                            title="Sign Out"
+                    )}
+                    <div className="flex items-center gap-1 ml-auto">
+                        <NotificationBell />
+                        <button
+                            onClick={() => setCollapsed(!collapsed)}
+                            className="p-2 hover:bg-blue-800 rounded"
                         >
-                            {isSigningOut ? (
-                                <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                                <LogOut size={16} />
-                            )}
+                            <Menu size={20} />
                         </button>
                     </div>
-                ) : (
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-blue-900 mx-auto cursor-pointer" title={user?.name || 'User'}>
-                            {user?.name?.[0] || 'U'}
+                </div>
+
+                {/* Navigation Menu */}
+                <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-blue-800">
+                    {modules.map((module) => {
+                        // Filter based on permission using server-side role
+                        if (module.permission && !can(module.permission)) {
+                            return null;
+                        }
+
+                        const Icon = module.icon;
+                        const isActive = (pathname || '').startsWith(module.href);
+                        return (
+                            <Link
+                                key={module.id}
+                                href={module.href}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 transition-colors",
+                                    isActive
+                                        ? "bg-blue-800 border-l-4 border-yellow-400"
+                                        : "hover:bg-blue-800/50 border-l-4 border-transparent"
+                                )}
+                                title={collapsed ? module.name : undefined}
+                            >
+                                <Icon size={20} className="shrink-0" />
+                                {!collapsed && <span className="text-sm font-medium whitespace-nowrap">{module.name}</span>}
+                            </Link>
+                        );
+                    })}
+                </nav>
+
+                {/* User Profile Area */}
+                <div className="p-4 border-t border-blue-800">
+                    {!collapsed ? (
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-blue-900 shrink-0">
+                                {user?.name?.[0] || 'U'}
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
+                                <p className="text-xs text-blue-300 truncate">{userRole || 'No Role'}</p>
+                            </div>
+                            <button
+                                onClick={handleClientSignOut}
+                                disabled={isSigningOut}
+                                className="p-2 hover:bg-blue-800 rounded shrink-0 disabled:opacity-50"
+                                title="Sign Out"
+                            >
+                                {isSigningOut ? (
+                                    <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                    <LogOut size={16} />
+                                )}
+                            </button>
                         </div>
-                        <button 
-                            onClick={handleClientSignOut}
-                            disabled={isSigningOut}
-                            className="p-2 hover:bg-blue-800 rounded shrink-0 text-gray-300 hover:text-white disabled:opacity-50" 
-                            title="Sign Out"
-                        >
-                            {isSigningOut ? (
-                                <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                                <LogOut size={16} />
-                            )}
-                        </button>
-                    </div>
-                )}
-            </div>
-        </aside>
+                    ) : (
+                        <div className="flex flex-col items-center gap-2">
+                            <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center font-bold text-blue-900 mx-auto cursor-pointer" title={user?.name || 'User'}>
+                                {user?.name?.[0] || 'U'}
+                            </div>
+                            <button
+                                onClick={handleClientSignOut}
+                                disabled={isSigningOut}
+                                className="p-2 hover:bg-blue-800 rounded shrink-0 text-gray-300 hover:text-white disabled:opacity-50"
+                                title="Sign Out"
+                            >
+                                {isSigningOut ? (
+                                    <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                    <LogOut size={16} />
+                                )}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </aside>
+            <PushNotificationPrompt />
+        </>
     );
 }

@@ -311,6 +311,54 @@ model User {
   updatedAt DateTime @updatedAt
   createdBy String?  // ID of admin who created this user
   updatedBy String?  // ID of admin who last modified this user
+
+  // Relations
+  notifications             Notification[]
+  notificationPreference    UserNotificationPreference?
+}
+
+// Notification System Module
+
+model Notification {
+  id          String   @id @default(cuid())
+  type        String   // notification type key (e.g., "approval_request", "low_stock", etc.)
+  title       String
+  message     String
+  priority    String   @default("medium") // "low", "medium", "high", "critical"
+  
+  // Targeting
+  userId      String   // recipient user ID
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Status
+  read        Boolean  @default(false)
+  readAt      DateTime?
+  
+  // Context (optional references for navigation)
+  entityType  String?  // "inventory_item", "stock_transaction", "exception", "truck", "material_request"
+  entityId    String?  // ID of related entity for click-through navigation
+  
+  createdAt   DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+}
+
+model UserNotificationPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Browser push notifications
+  pushEnabled       Boolean  @default(false)
+  pushSubscription  String?  // JSON stringified PushSubscription from browser
+  
+  // Per-type preferences stored as JSON
+  // Format: { "type_key": { "inApp": true, "push": false } }
+  preferences       String   @default("{}")
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 // Staff Registry Module

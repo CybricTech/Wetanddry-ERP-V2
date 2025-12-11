@@ -17,6 +17,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Wet N Dry ERP",
   description: "Enterprise Resource Planning for Wet N Dry Concrete Batching Operations",
+  manifest: "/manifest.json",
+  themeColor: "#3b82f6",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "WetDry ERP",
+  },
 };
 
 export default function RootLayout({
