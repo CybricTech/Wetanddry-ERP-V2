@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+// Dashboard data refreshes every 30 seconds
+export const revalidate = 30;
+
 export default async function Dashboard() {
     const session = await auth();
 

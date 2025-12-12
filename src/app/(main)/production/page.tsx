@@ -2,7 +2,8 @@ import React from 'react';
 import { getRecipes, getSilos, getProductionRuns, getAllInventoryItems } from '@/lib/actions/production';
 import ProductionClient from '@/components/production/ProductionClient';
 
-export const dynamic = 'force-dynamic';
+// Revalidate every 30 seconds
+export const revalidate = 30;
 
 export default async function ProductionPage() {
     const recipes = await getRecipes();

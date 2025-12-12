@@ -3,8 +3,9 @@ import { Sidebar } from '@/components/Layout/Sidebar';
 import { Header } from '@/components/Layout/Header';
 import { auth } from '@/auth';
 
-// Force dynamic rendering to ensure fresh session data on every request
-export const dynamic = 'force-dynamic';
+// Allow caching but revalidate session every 60 seconds
+// Session cookies are still checked on each request by NextAuth middleware
+export const revalidate = 60;
 
 export default async function DashboardLayout({
     children,

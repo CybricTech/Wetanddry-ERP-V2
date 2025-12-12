@@ -3,7 +3,8 @@ import { getInventoryStats, getStorageLocations, getAllStockTransactions, getPen
 import InventoryClient from '@/components/inventory/InventoryClient';
 import { auth } from '@/auth';
 
-export const dynamic = 'force-dynamic';
+// Revalidate every 30 seconds - balances freshness with performance
+export const revalidate = 30;
 
 export default async function InventoryPage() {
     // Get current user session
