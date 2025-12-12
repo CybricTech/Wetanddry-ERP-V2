@@ -204,9 +204,6 @@ export async function notifyByRole(
 export async function getMyNotifications(limit = 20, includeRead = false) {
     try {
         const session = await auth();
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getMyNotifications:entry',message:'getMyNotifications called',data:{hasSession:!!session,userId:session?.user?.id,limit,includeRead},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
-        // #endregion
         if (!session?.user?.id) {
             console.warn('[Notifications] getMyNotifications called without valid session');
             return { success: false, error: 'Not authenticated', notifications: [] };
@@ -221,16 +218,9 @@ export async function getMyNotifications(limit = 20, includeRead = false) {
             take: limit,
         });
 
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getMyNotifications:success',message:'findMany succeeded',data:{count:notifications.length,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
-        // #endregion
         return { success: true, notifications };
     } catch (error) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getMyNotifications:error',message:'findMany failed',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
-        // #endregion
         console.error('[Notifications] Failed to get notifications:', error);
-        // Provide more specific error message
         const errorMessage = error instanceof Error ? error.message : 'Failed to fetch notifications';
         return { success: false, error: errorMessage, notifications: [] };
     }
@@ -241,7 +231,6 @@ export async function getUnreadCount() {
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            // Don't log warning for unread count as it's called frequently during loading
             return 0;
         }
 
@@ -252,14 +241,8 @@ export async function getUnreadCount() {
             },
         });
 
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getUnreadCount:success',message:'count query succeeded',data:{count,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
-        // #endregion
         return count;
     } catch (error) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getUnreadCount:error',message:'count query failed',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
-        // #endregion
         console.error('[Notifications] Failed to get unread count:', error);
         return 0;
     }
@@ -476,17 +459,17 @@ export async function notifyRequester(
 // Check and notify for low stock items
 export async function checkAndNotifyLowStock(itemId?: string) {
     try {
-        const whereClause = itemId 
+        const whereClause = itemId
             ? { id: itemId, status: 'Active' }
             : { status: 'Active' };
-        
+
         const items = await prisma.inventoryItem.findMany({
             where: whereClause,
             include: { location: true }
         });
 
         const lowStockItems = items.filter(item => item.quantity <= item.minThreshold);
-        
+
         for (const item of lowStockItems) {
             const config = NOTIFICATION_CONFIG.low_stock_alert;
             await notifyByRole(config.targetRoles!, {
@@ -509,24 +492,24 @@ export async function checkAndNotifyLowStock(itemId?: string) {
 // Check and notify for critical silo levels (< 20%)
 export async function checkAndNotifySiloCritical(siloId?: string) {
     try {
-        const whereClause = siloId 
+        const whereClause = siloId
             ? { id: siloId, type: 'Silo', isActive: true }
             : { type: 'Silo', isActive: true };
-        
+
         const silos = await prisma.storageLocation.findMany({
             where: whereClause,
             include: { items: { where: { itemType: 'Cement' } } }
         });
 
         let alertsSent = 0;
-        
+
         for (const silo of silos) {
             const cementItem = silo.items[0];
             if (!cementItem) continue;
-            
+
             const maxCapacity = cementItem.maxCapacity || silo.capacity || 95000;
             const percentage = (cementItem.quantity / maxCapacity) * 100;
-            
+
             if (percentage < 20) {
                 const config = NOTIFICATION_CONFIG.silo_level_critical;
                 await notifyByRole(config.targetRoles!, {
@@ -704,12 +687,12 @@ export async function notifySparePartsLow(partId: string, partName: string, quan
 
 export async function runScheduledAlertChecks() {
     console.log('[Notifications] Running scheduled alert checks...');
-    
+
     const results = {
         lowStock: await checkAndNotifyLowStock(),
         siloCritical: await checkAndNotifySiloCritical(),
     };
-    
+
     console.log('[Notifications] Scheduled checks complete:', results);
     return results;
 }

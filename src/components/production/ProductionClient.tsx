@@ -91,62 +91,13 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
     const mountTime = useRef(Date.now());
     const { can, isLoading, role } = usePermissions();
 
-    // #region agent log
-    renderCount.current++;
-    const renderNum = renderCount.current;
-    const timeSinceMount = Date.now() - mountTime.current;
-    fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            sessionId: 'debug-session',
-            runId: 'post-fix',
-            hypothesisId: 'H5',
-            location: 'ProductionClient.tsx:render',
-            message: 'component render',
-            data: { renderNum, timeSinceMount, isLoading, role, hasInitialPermissions: !!initialPermissions },
-            timestamp: Date.now(),
-        }),
-    }).catch(() => { });
-    // #endregion
-
     // Use server-provided permissions for initial render (no loading flash)
     // Fall back to client-side hook for dynamic updates (e.g., if role changes)
     const canLogProduction = initialPermissions?.canLogProduction ?? can('log_production');
     const canManageRecipes = initialPermissions?.canManageRecipes ?? can('manage_recipes');
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            sessionId: 'debug-session',
-            runId: 'post-fix',
-            hypothesisId: 'H1',
-            location: 'ProductionClient.tsx:permissions',
-            message: 'permission flags computed',
-            data: { renderNum, canLogProduction, canManageRecipes, isLoading, role, usedInitialPermissions: !!initialPermissions },
-            timestamp: Date.now(),
-        }),
-    }).catch(() => { });
-    // #endregion
-
     useEffect(() => {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sessionId: 'debug-session',
-                runId: 'post-fix',
-                hypothesisId: 'H3',
-                location: 'ProductionClient.tsx:90',
-                message: 'permission-derived flags changed (useEffect)',
-                data: { canLogProduction, canManageRecipes },
-                timestamp: Date.now(),
-            }),
-        }).catch(() => { });
-        // #endregion
+        // Track permission changes
     }, [canLogProduction, canManageRecipes]);
 
     // Calculate required materials for selected recipe and quantity

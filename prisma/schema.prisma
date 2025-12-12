@@ -33,6 +33,7 @@ model Truck {
   fuelLogs           FuelLog[]
   exceptionLogs      ExceptionLog[]
   documents          TruckDocument[]
+  expenses           Expense[]         // Transport/fuel expenses linked to this truck
 }
 
 model TruckDocument {
@@ -253,12 +254,21 @@ model ProductionRun {
   recipe      Recipe   @relation(fields: [recipeId], references: [id])
   siloId      String?  // Which silo the cement was drawn from
   silo        StorageLocation? @relation(fields: [siloId], references: [id])
-  quantity    Float    // Amount produced
+  
+  // Client Attribution (CRM Integration)
+  clientId    String?  // Which client ordered this batch
+  client      Client?  @relation(fields: [clientId], references: [id])
+  orderRef    String?  // Client's PO/Order reference number
+  deliveryAddress String? // Specific delivery location for this batch
+  
+  quantity    Float    // Amount produced (m³)
   cementUsed  Float?   // Amount of cement deducted from silo (kg)
   status      String   @default("Completed")
   notes       String?
   operatorName String?
   createdAt   DateTime @default(now())
+  
+  @@index([clientId])
 }
 
 // Diesel & Fuel Intelligence Module
@@ -290,6 +300,10 @@ model ExceptionLog {
   
   recipeId    String?
   recipe      Recipe?  @relation(fields: [recipeId], references: [id])
+  
+  // Client Attribution (CRM Integration)
+  clientId    String?
+  client      Client?  @relation(fields: [clientId], references: [id])
 
   notes       String?
   reportedBy  String?
@@ -297,6 +311,8 @@ model ExceptionLog {
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  @@index([clientId])
 }
 
 // User Management Module
@@ -393,4 +409,128 @@ model StaffDocument {
   notes            String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+// ==================== CRM MODULE ====================
+
+model Client {
+  id              String   @id @default(cuid())
+  
+  // Basic Information
+  code            String   @unique  // e.g., "CLI-001", auto-generated
+  name            String            // Company or individual name
+  type            String   @default("Business")  // "Business", "Individual", "Government"
+  
+  // Contact Details
+  email           String?
+  phone           String
+  altPhone        String?
+  address         String
+  city            String
+  state           String
+  
+  // Business Information
+  taxId           String?           // VAT/TIN number
+  paymentTerms    String   @default("Net 30")  // "COD", "Net 15", "Net 30", "Net 60"
+  creditLimit     Float?            // Maximum credit allowed (Naira)
+  currentBalance  Float    @default(0)  // Outstanding balance
+  
+  // Classification
+  category        String   @default("Regular")  // "VIP", "Regular", "New", "Dormant"
+  tags            String?           // JSON array of tags for flexible categorization
+  
+  // Status & Tracking
+  status          String   @default("Active")  // "Active", "Inactive", "Suspended", "Blacklisted"
+  notes           String?
+  
+  // Audit
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  contacts        ClientContact[]
+  documents       ClientDocument[]
+  expenses        Expense[]
+  productionRuns  ProductionRun[]
+  exceptionLogs   ExceptionLog[]
+  
+  @@index([code])
+  @@index([status])
+  @@index([category])
+}
+
+model ClientContact {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  name        String
+  role        String?           // "Site Manager", "Procurement", "Finance", etc.
+  email       String?
+  phone       String
+  isPrimary   Boolean  @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([clientId])
+}
+
+model ClientDocument {
+  id                 String   @id @default(cuid())
+  clientId           String
+  client             Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  name               String
+  type               String   // "Contract", "Agreement", "Quote", "Invoice", "Other"
+  url                String
+  cloudinaryPublicId String
+  expiryDate         DateTime?
+  notes              String?
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([clientId])
+}
+
+model Expense {
+  id             String   @id @default(cuid())
+  
+  // Expense Details
+  category       String            // "Transport", "Materials", "Labor", "Equipment", "Maintenance", "Administrative", "Other"
+  description    String
+  amount         Float
+  
+  // Date & Reference
+  date           DateTime @default(now())
+  invoiceNumber  String?
+  receiptUrl     String?
+  receiptPublicId String?          // Cloudinary public ID for receipt
+  
+  // Client Attribution (optional - for client-specific expenses)
+  clientId       String?
+  client         Client?  @relation(fields: [clientId], references: [id])
+  
+  // Truck Attribution (optional - for transport/fuel expenses)
+  truckId        String?
+  truck          Truck?   @relation(fields: [truckId], references: [id])
+  
+  // Status & Approval Workflow
+  status         String   @default("Pending")  // "Pending", "Approved", "Rejected"
+  approvedBy     String?
+  approvedAt     DateTime?
+  rejectionReason String?
+  
+  // Audit
+  recordedBy     String
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@index([clientId])
+  @@index([category])
+  @@index([date])
+  @@index([status])
 }

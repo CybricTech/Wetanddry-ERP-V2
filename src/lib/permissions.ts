@@ -61,7 +61,13 @@ export type Permission =
     // Reporting & Settings
     | 'view_analytics' // Dashboard
     | 'view_financials' // Costs/Values
-    | 'manage_system_settings';
+    | 'manage_system_settings'
+
+    // CRM
+    | 'view_crm'
+    | 'manage_clients'
+    | 'manage_expenses'
+    | 'view_expense_reports';
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     [Role.SUPER_ADMIN]: [
@@ -96,6 +102,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_analytics',
         'view_financials',
         'manage_system_settings',
+        // CRM
+        'view_crm',
+        'manage_clients',
+        'manage_expenses',
+        'view_expense_reports',
     ],
     [Role.MANAGER]: [
         'view_staff',
@@ -120,6 +131,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_exceptions',
         'view_analytics',
         'view_financials',
+        // CRM
+        'view_crm',
+        'manage_clients',
+        'manage_expenses',
+        'view_expense_reports',
     ],
     [Role.STOREKEEPER]: [
         'create_inventory_item',
@@ -146,6 +162,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_exceptions',
         'view_analytics',
         'view_financials',
+        // CRM (view and record expenses only)
+        'view_crm',
+        'manage_expenses',
+        'view_expense_reports',
     ],
 };
 
