@@ -274,6 +274,22 @@ function AddRecipeModal({
 }
 
 export default function RecipeManager({ recipes, inventoryItems, canManageRecipes = false }: { recipes: Recipe[], inventoryItems: InventoryItem[], canManageRecipes?: boolean }) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: 'debug-session',
+            runId: 'initial',
+            hypothesisId: 'H4',
+            location: 'RecipeManager.tsx:render',
+            message: 'RecipeManager render with canManageRecipes',
+            data: { canManageRecipes },
+            timestamp: Date.now(),
+        }),
+    }).catch(() => { });
+    // #endregion
+
     const router = useRouter()
     const [isAdding, setIsAdding] = useState(false)
 

@@ -204,6 +204,9 @@ export async function notifyByRole(
 export async function getMyNotifications(limit = 20, includeRead = false) {
     try {
         const session = await auth();
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getMyNotifications:entry',message:'getMyNotifications called',data:{hasSession:!!session,userId:session?.user?.id,limit,includeRead},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
+        // #endregion
         if (!session?.user?.id) {
             console.warn('[Notifications] getMyNotifications called without valid session');
             return { success: false, error: 'Not authenticated', notifications: [] };
@@ -218,8 +221,14 @@ export async function getMyNotifications(limit = 20, includeRead = false) {
             take: limit,
         });
 
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getMyNotifications:success',message:'findMany succeeded',data:{count:notifications.length,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
+        // #endregion
         return { success: true, notifications };
     } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getMyNotifications:error',message:'findMany failed',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
+        // #endregion
         console.error('[Notifications] Failed to get notifications:', error);
         // Provide more specific error message
         const errorMessage = error instanceof Error ? error.message : 'Failed to fetch notifications';
@@ -243,8 +252,14 @@ export async function getUnreadCount() {
             },
         });
 
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getUnreadCount:success',message:'count query succeeded',data:{count,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
+        // #endregion
         return count;
     } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.ts:getUnreadCount:error',message:'count query failed',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-table-exists'})}).catch(()=>{});
+        // #endregion
         console.error('[Notifications] Failed to get unread count:', error);
         return 0;
     }

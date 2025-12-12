@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition } from 'react';
+import React, { useEffect, useState, useTransition, useRef } from 'react';
 import {
     Factory, Play, AlertCircle, CheckCircle, Database, Clock, ChevronDown,
     Loader2, X, TrendingUp, BarChart3, Beaker, Package, History,
@@ -71,9 +71,13 @@ interface ProductionClientProps {
     silos: Silo[];
     recentRuns: ProductionRun[];
     inventoryItems: InventoryItem[];
+    initialPermissions?: {
+        canLogProduction: boolean;
+        canManageRecipes: boolean;
+    };
 }
 
-export default function ProductionClient({ recipes, silos, recentRuns, inventoryItems }: ProductionClientProps) {
+export default function ProductionClient({ recipes, silos, recentRuns, inventoryItems, initialPermissions }: ProductionClientProps) {
     const [activeTab, setActiveTab] = useState<'production' | 'recipes' | 'logs'>('recipes');
     const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
     const [selectedSilo, setSelectedSilo] = useState<Silo | null>(null);
@@ -83,10 +87,67 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSummaryModal, setShowSummaryModal] = useState(false);
     const [summaryData, setSummaryData] = useState<any>(null);
-    const { can } = usePermissions();
+    const renderCount = useRef(0);
+    const mountTime = useRef(Date.now());
+    const { can, isLoading, role } = usePermissions();
 
-    const canLogProduction = can('log_production');
-    const canManageRecipes = can('manage_recipes');
+    // #region agent log
+    renderCount.current++;
+    const renderNum = renderCount.current;
+    const timeSinceMount = Date.now() - mountTime.current;
+    fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: 'debug-session',
+            runId: 'post-fix',
+            hypothesisId: 'H5',
+            location: 'ProductionClient.tsx:render',
+            message: 'component render',
+            data: { renderNum, timeSinceMount, isLoading, role, hasInitialPermissions: !!initialPermissions },
+            timestamp: Date.now(),
+        }),
+    }).catch(() => { });
+    // #endregion
+
+    // Use server-provided permissions for initial render (no loading flash)
+    // Fall back to client-side hook for dynamic updates (e.g., if role changes)
+    const canLogProduction = initialPermissions?.canLogProduction ?? can('log_production');
+    const canManageRecipes = initialPermissions?.canManageRecipes ?? can('manage_recipes');
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: 'debug-session',
+            runId: 'post-fix',
+            hypothesisId: 'H1',
+            location: 'ProductionClient.tsx:permissions',
+            message: 'permission flags computed',
+            data: { renderNum, canLogProduction, canManageRecipes, isLoading, role, usedInitialPermissions: !!initialPermissions },
+            timestamp: Date.now(),
+        }),
+    }).catch(() => { });
+    // #endregion
+
+    useEffect(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3cab5abe-e0f9-44cf-bf14-ae1d88ca5246', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sessionId: 'debug-session',
+                runId: 'post-fix',
+                hypothesisId: 'H3',
+                location: 'ProductionClient.tsx:90',
+                message: 'permission-derived flags changed (useEffect)',
+                data: { canLogProduction, canManageRecipes },
+                timestamp: Date.now(),
+            }),
+        }).catch(() => { });
+        // #endregion
+    }, [canLogProduction, canManageRecipes]);
 
     // Calculate required materials for selected recipe and quantity
     const calculateRequirements = () => {
