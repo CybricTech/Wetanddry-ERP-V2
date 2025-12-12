@@ -4,11 +4,11 @@ import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
-import { 
-    notifyProductionCompleted, 
+import {
+    notifyProductionCompleted,
     notifyMaterialShortage,
     checkAndNotifyLowStock,
-    checkAndNotifySiloCritical 
+    checkAndNotifySiloCritical
 } from '@/lib/actions/notifications'
 
 // ============ RECIPE MANAGEMENT ============
@@ -174,6 +174,11 @@ export async function createProductionRun(formData: FormData) {
         const notes = formData.get('notes') as string
         const operatorName = formData.get('operatorName') as string
 
+        // CRM Integration - Client fields
+        const clientId = formData.get('clientId') as string | null
+        const orderRef = formData.get('orderRef') as string | null
+        const deliveryAddress = formData.get('deliveryAddress') as string | null
+
         if (!recipeId || isNaN(quantity) || quantity <= 0) {
             return { success: false, message: 'Invalid input: Recipe and quantity are required' }
         }
@@ -295,11 +300,16 @@ export async function createProductionRun(formData: FormData) {
                     cementUsed: totalCementUsed,
                     status: 'Completed',
                     notes,
-                    operatorName
+                    operatorName,
+                    // CRM Integration
+                    clientId: clientId || null,
+                    orderRef: orderRef || null,
+                    deliveryAddress: deliveryAddress || null
                 },
                 include: {
                     recipe: true,
-                    silo: true
+                    silo: true,
+                    client: true
                 }
             })
         })
@@ -330,11 +340,11 @@ export async function createProductionRun(formData: FormData) {
             // Extract item name from error message
             const match = error.message.match(/Insufficient (?:stock for |cement in )?([^.]+)/i)
             const itemName = match ? match[1] : 'materials'
-            
+
             // Get recipe name for notification
             const recipeId = formData.get('recipeId') as string
             const recipe = await prisma.recipe.findUnique({ where: { id: recipeId } })
-            
+
             if (recipe) {
                 notifyMaterialShortage(
                     recipe.name,

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Truck, Package, Fuel, FlaskConical, Users, Settings, Menu, LogOut, AlertTriangle, Loader2, Wallet } from 'lucide-react';
+import { LayoutDashboard, Truck, Package, Fuel, FlaskConical, Users, Settings, Menu, LogOut, AlertTriangle, Loader2, Wallet, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { signOut } from 'next-auth/react';
 
@@ -12,6 +12,7 @@ import PushNotificationPrompt from '@/components/notifications/PushNotificationP
 
 const modules: { id: string; name: string; icon: any; href: string; permission?: Permission }[] = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
+    { id: 'crm', name: 'Customer Relations', icon: Building2, href: '/crm', permission: 'view_crm' },
     { id: 'trucks', name: 'Truck & Asset Management', icon: Truck, href: '/trucks', permission: 'view_fleet' },
     { id: 'inventory', name: 'Inventory Management', icon: Package, href: '/inventory', permission: 'view_inventory' },
     { id: 'fuel', name: 'Diesel Management', icon: Fuel, href: '/fuel', permission: 'view_fuel_logs' },

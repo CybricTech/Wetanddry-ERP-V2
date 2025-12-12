@@ -4,7 +4,7 @@ import React, { useEffect, useState, useTransition, useRef } from 'react';
 import {
     Factory, Play, AlertCircle, CheckCircle, Database, Clock, ChevronDown,
     Loader2, X, TrendingUp, BarChart3, Beaker, Package, History,
-    AlertTriangle, Settings
+    AlertTriangle, Settings, Building2, MapPin
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import RecipeManager from './RecipeManager';
@@ -66,18 +66,26 @@ interface InventoryItem {
     unit: string;
 }
 
+interface ClientOption {
+    id: string;
+    code: string;
+    name: string;
+    category?: string;
+}
+
 interface ProductionClientProps {
     recipes: Recipe[];
     silos: Silo[];
     recentRuns: ProductionRun[];
     inventoryItems: InventoryItem[];
+    clients?: ClientOption[];
     initialPermissions?: {
         canLogProduction: boolean;
         canManageRecipes: boolean;
     };
 }
 
-export default function ProductionClient({ recipes, silos, recentRuns, inventoryItems, initialPermissions }: ProductionClientProps) {
+export default function ProductionClient({ recipes, silos, recentRuns, inventoryItems, clients = [], initialPermissions }: ProductionClientProps) {
     const [activeTab, setActiveTab] = useState<'production' | 'recipes' | 'logs'>('recipes');
     const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
     const [selectedSilo, setSelectedSilo] = useState<Silo | null>(null);
@@ -87,6 +95,12 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSummaryModal, setShowSummaryModal] = useState(false);
     const [summaryData, setSummaryData] = useState<any>(null);
+
+    // CRM Integration - Client fields
+    const [selectedClientId, setSelectedClientId] = useState<string>('');
+    const [orderRef, setOrderRef] = useState<string>('');
+    const [deliveryAddress, setDeliveryAddress] = useState<string>('');
+
     const renderCount = useRef(0);
     const mountTime = useRef(Date.now());
     const { can, isLoading, role } = usePermissions();
@@ -158,6 +172,17 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
         formData.append('siloId', selectedSilo!.id);
         formData.append('quantity', quantity);
 
+        // CRM Integration - Client fields
+        if (selectedClientId) {
+            formData.append('clientId', selectedClientId);
+        }
+        if (orderRef) {
+            formData.append('orderRef', orderRef);
+        }
+        if (deliveryAddress) {
+            formData.append('deliveryAddress', deliveryAddress);
+        }
+
         startTransition(async () => {
             try {
                 const { createProductionRun } = await import('@/lib/actions/production');
@@ -172,7 +197,8 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
                         recipeName: selectedRecipe!.name,
                         quantity: quantity,
                         deductions: result.deductions,
-                        runId: result.run?.id
+                        runId: result.run?.id,
+                        clientName: clients.find(c => c.id === selectedClientId)?.name
                     });
                     setShowSummaryModal(true);
 
@@ -180,6 +206,9 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
                     setSelectedRecipe(null);
                     setSelectedSilo(null);
                     setQuantity('');
+                    setSelectedClientId('');
+                    setOrderRef('');
+                    setDeliveryAddress('');
                 } else {
                     setMessage({ type: 'error', text: result.message });
                     setShowConfirmModal(false);
@@ -383,11 +412,71 @@ export default function ProductionClient({ recipes, silos, recentRuns, inventory
                             )}
                         </div>
 
+                        {/* CRM Integration - Client Selection */}
+                        {clients.length > 0 && (
+                            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                                <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Building2 className="text-violet-600" size={22} />
+                                    Step 3: Client Assignment
+                                    <span className="text-sm font-normal text-gray-400 ml-2">(Optional)</span>
+                                </h2>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Select Client
+                                        </label>
+                                        <select
+                                            value={selectedClientId}
+                                            onChange={(e) => setSelectedClientId(e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 outline-none transition-all"
+                                        >
+                                            <option value="">-- No client (internal) --</option>
+                                            {clients.map(client => (
+                                                <option key={client.id} value={client.id}>
+                                                    {client.code} - {client.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Order/PO Reference
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={orderRef}
+                                            onChange={(e) => setOrderRef(e.target.value)}
+                                            placeholder="e.g., PO-2024-001"
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 outline-none transition-all"
+                                        />
+                                    </div>
+
+                                    {selectedClientId && (
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                <MapPin size={14} className="inline mr-1" />
+                                                Delivery Address
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={deliveryAddress}
+                                                onChange={(e) => setDeliveryAddress(e.target.value)}
+                                                placeholder="Enter delivery location..."
+                                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 outline-none transition-all"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Quantity Input */}
                         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                             <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                                 <Package className="text-emerald-600" size={22} />
-                                Step 3: Production Quantity
+                                Step {clients.length > 0 ? '4' : '3'}: Production Quantity
                             </h2>
 
                             <div className="flex items-center gap-4">
