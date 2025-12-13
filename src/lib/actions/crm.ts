@@ -695,17 +695,27 @@ export async function getTopClientsByProduction(limit: number = 10) {
  * Get clients list for dropdowns (simplified)
  */
 export async function getClientsForSelect() {
-    const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return []
 
-    return await prisma.client.findMany({
-        where: { status: 'Active' },
-        select: {
-            id: true,
-            code: true,
-            name: true,
-            category: true
-        },
-        orderBy: { name: 'asc' }
-    })
+        // Check permission gracefully
+        if (!hasPermission(session.user.role, 'view_crm')) {
+            return []
+        }
+
+        return await prisma.client.findMany({
+            where: { status: 'Active' },
+            select: {
+                id: true,
+                code: true,
+                name: true,
+                category: true
+            },
+            orderBy: { name: 'asc' }
+        })
+    } catch (error) {
+        console.error('[CRM] Error fetching clients for select:', error)
+        return []
+    }
 }

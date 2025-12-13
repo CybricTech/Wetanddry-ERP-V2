@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition, useEffect, useCallback } from 'react';
 import { usePermissions } from '@/hooks/use-permissions';
+import { hasPermission, Permission } from '@/lib/permissions';
 import { useLiveUpdates, formatRefreshTime } from '@/hooks/use-live-updates';
 import { useRouter } from 'next/navigation';
 import {
@@ -73,18 +74,27 @@ interface ActivityTabProps {
     transactions: StockTransaction[];
     pendingApprovals: PendingApproval[];
     pendingCounts: PendingCounts;
+    userRole?: string;
 }
 
 // ==================== MAIN ACTIVITY TAB COMPONENT ====================
 
-export default function ActivityTab({ transactions, pendingApprovals, pendingCounts }: ActivityTabProps) {
+export default function ActivityTab({ transactions, pendingApprovals, pendingCounts, userRole }: ActivityTabProps) {
     const [activeSubTab, setActiveSubTab] = useState<'pending' | 'movements' | 'audit'>('pending');
     const [statusFilter, setStatusFilter] = useState<'all' | 'Pending' | 'Approved' | 'Rejected'>('all');
     const [typeFilter, setTypeFilter] = useState<'all' | 'IN' | 'OUT' | 'ADJUSTMENT'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedTransaction, setSelectedTransaction] = useState<StockTransaction | null>(null);
-    const { can } = usePermissions();
+    const { can: clientCan } = usePermissions();
+
+    // Use server-side role if available
+    const can = (permission: Permission): boolean => {
+        if (userRole) {
+            return hasPermission(userRole, permission);
+        }
+        return clientCan(permission);
+    };
 
     // Live updates - refresh data every 30 seconds
     const { refresh, isRefreshing, nextRefreshIn } = useLiveUpdates({
@@ -185,6 +195,7 @@ export default function ActivityTab({ transactions, pendingApprovals, pendingCou
                 <PendingSubTab
                     pendingApprovals={pendingApprovals}
                     counts={pendingCounts}
+                    userRole={userRole}
                 />
             )}
 
@@ -220,10 +231,18 @@ export default function ActivityTab({ transactions, pendingApprovals, pendingCou
 
 // ==================== PENDING SUB-TAB ====================
 
-function PendingSubTab({ pendingApprovals, counts }: { pendingApprovals: PendingApproval[]; counts: PendingCounts }) {
+function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApprovals: PendingApproval[]; counts: PendingCounts; userRole?: string }) {
     const [isPending, startTransition] = useTransition();
     const [actionLoading, setActionLoading] = useState<string | null>(null);
-    const { can } = usePermissions();
+    const { can: clientCan } = usePermissions();
+
+    // Use server-side role if available
+    const can = (permission: Permission): boolean => {
+        if (userRole) {
+            return hasPermission(userRole, permission);
+        }
+        return clientCan(permission);
+    };
 
     const handleApprove = async (item: PendingApproval) => {
         setActionLoading(item.id);

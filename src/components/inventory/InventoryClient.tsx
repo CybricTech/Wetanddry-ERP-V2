@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition, useEffect } from 'react';
 import { usePermissions } from '@/hooks/use-permissions';
+import { hasPermission, Permission } from '@/lib/permissions';
 import {
     Package, AlertTriangle, ArrowUpRight, ArrowDownRight, Database, Search, Filter,
     Plus, ChevronDown, Clock, CheckCircle2, XCircle, Warehouse, FlaskConical,
@@ -81,6 +82,7 @@ interface InventoryClientProps {
         total: number;
     };
     currentUser: string;
+    userRole?: string;
 }
 
 export default function InventoryClient({
@@ -94,7 +96,8 @@ export default function InventoryClient({
     transactions,
     pendingApprovals,
     pendingCounts,
-    currentUser
+    currentUser,
+    userRole
 }: InventoryClientProps) {
     const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'activity' | 'expiring'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
@@ -110,7 +113,18 @@ export default function InventoryClient({
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
     const [isPending, startTransition] = useTransition();
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-    const { can } = usePermissions();
+    const { can: clientCan } = usePermissions();
+
+    // Use server-side role if available, otherwise fall back to client-side session
+    // This prevents the "flash of hidden UI" when session is loading
+    const can = (permission: Permission): boolean => {
+        if (userRole) {
+            // Use server-provided role (instant, no loading state)
+            return hasPermission(userRole, permission);
+        }
+        // Fall back to client-side session (may have loading delay)
+        return clientCan(permission);
+    };
 
     // Filter items based on search and category
     const filteredItems = items.filter(item => {
@@ -256,7 +270,7 @@ export default function InventoryClient({
                     {/* Silo Visualization */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {siloStats.map(silo => (
-                            <SiloCard key={silo.id} silo={silo} onStockAction={handleStockAction} />
+                            <SiloCard key={silo.id} silo={silo} onStockAction={handleStockAction} userRole={userRole} />
                         ))}
                     </div>
 
@@ -579,6 +593,7 @@ export default function InventoryClient({
                     transactions={transactions}
                     pendingApprovals={pendingApprovals}
                     pendingCounts={pendingCounts}
+                    userRole={userRole}
                 />
             )}
 
@@ -655,6 +670,7 @@ export default function InventoryClient({
                     item={selectedItem}
                     locations={locations}
                     onClose={() => { setShowViewItemModal(false); setSelectedItem(null); }}
+                    userRole={userRole}
                 />
             )}
 
@@ -712,8 +728,16 @@ function StatsCard({ title, value, icon, color, alert, trend }: {
     );
 }
 
-function SiloCard({ silo, onStockAction }: { silo: SiloStat; onStockAction: (type: 'in' | 'out', item?: InventoryItem) => void }) {
-    const { can } = usePermissions();
+function SiloCard({ silo, onStockAction, userRole }: { silo: SiloStat; onStockAction: (type: 'in' | 'out', item?: InventoryItem) => void; userRole?: string }) {
+    const { can: clientCan } = usePermissions();
+
+    // Use server-side role if available
+    const can = (permission: Permission): boolean => {
+        if (userRole) {
+            return hasPermission(userRole, permission);
+        }
+        return clientCan(permission);
+    };
 
     const levelColor = silo.status === 'Low' ? 'from-red-500 to-red-400' :
         silo.status === 'High' ? 'from-amber-500 to-amber-400' :
@@ -1803,10 +1827,11 @@ function LoadCementModal({ silo, onClose }: {
 
 // ==================== VIEW/EDIT ITEM MODAL ====================
 
-function ViewItemModal({ item, locations, onClose }: {
+function ViewItemModal({ item, locations, onClose, userRole }: {
     item: InventoryItem;
     locations: StorageLocation[];
     onClose: () => void;
+    userRole?: string;
 }) {
     const [activeTabModal, setActiveTabModal] = useState<'details' | 'edit' | 'history'>('details');
     const [isPending, startTransition] = useTransition();
@@ -2130,7 +2155,7 @@ function ViewItemModal({ item, locations, onClose }: {
                     )}
 
                     {activeTabModal === 'history' && (
-                        <TransactionHistory itemId={item.id} />
+                        <TransactionHistory itemId={item.id} userRole={userRole} />
                     )}
                 </div>
             </div>
@@ -2154,11 +2179,19 @@ function DetailItem({ label, value, highlight }: { label: string; value: string;
 }
 
 // Transaction History Component
-function TransactionHistory({ itemId }: { itemId: string }) {
+function TransactionHistory({ itemId, userRole }: { itemId: string; userRole?: string }) {
     const [transactions, setTransactions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
-    const { can } = usePermissions();
+    const { can: clientCan } = usePermissions();
+
+    // Use server-side role if available
+    const can = (permission: Permission): boolean => {
+        if (userRole) {
+            return hasPermission(userRole, permission);
+        }
+        return clientCan(permission);
+    };
 
     const loadTransactions = async () => {
         try {

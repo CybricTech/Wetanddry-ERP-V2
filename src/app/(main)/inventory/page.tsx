@@ -39,6 +39,7 @@ export default async function InventoryPage() {
             pendingApprovals={pendingData.pendingQueue}
             pendingCounts={pendingData.counts}
             currentUser={currentUser}
+            userRole={session?.user?.role}
         />
     );
 }

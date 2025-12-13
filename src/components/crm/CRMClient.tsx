@@ -331,6 +331,8 @@ function ClientsTab({
     loading: boolean
     canManageClients: boolean
 }) {
+    const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+
     const categoryColors: Record<string, string> = {
         VIP: 'bg-amber-100 text-amber-700 border-amber-200',
         Regular: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -466,7 +468,10 @@ function ClientsTab({
                             {/* Hover Action */}
                             <div className="px-4 py-3 bg-white border-t border-gray-100 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                                 <span className="text-xs text-gray-400">Payment: {client.paymentTerms}</span>
-                                <button className="text-violet-600 hover:text-violet-700 text-sm font-medium flex items-center gap-1">
+                                <button
+                                    onClick={() => setSelectedClient(client)}
+                                    className="text-violet-600 hover:text-violet-700 text-sm font-medium flex items-center gap-1"
+                                >
                                     View Details
                                     <ChevronRight size={16} />
                                 </button>
@@ -474,6 +479,14 @@ function ClientsTab({
                         </div>
                     ))}
                 </div>
+            )}
+
+            {/* Client Detail Modal */}
+            {selectedClient && (
+                <ClientDetailModal
+                    client={selectedClient}
+                    onClose={() => setSelectedClient(null)}
+                />
             )}
         </div>
     )
@@ -1310,6 +1323,214 @@ function ExpenseModal({
                     >
                         {isPending && <Loader2 size={16} className="animate-spin" />}
                         Record Expense
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// ==================== CLIENT DETAIL MODAL ====================
+
+function ClientDetailModal({
+    client,
+    onClose
+}: {
+    client: Client
+    onClose: () => void
+}) {
+    const statusColors: Record<string, string> = {
+        Active: 'bg-emerald-100 text-emerald-700',
+        Inactive: 'bg-gray-100 text-gray-600',
+        Suspended: 'bg-red-100 text-red-700',
+        Blacklisted: 'bg-red-100 text-red-700'
+    }
+
+    const categoryColors: Record<string, string> = {
+        VIP: 'bg-amber-100 text-amber-700',
+        Regular: 'bg-blue-100 text-blue-700',
+        New: 'bg-green-100 text-green-700',
+        Dormant: 'bg-gray-100 text-gray-600'
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+                {/* Header */}
+                <div className="flex items-start justify-between p-6 bg-gradient-to-r from-violet-600 to-purple-600 text-white">
+                    <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                            <Building2 className="w-8 h-8 text-white" />
+                        </div>
+                        <div>
+                            <p className="text-violet-200 text-sm font-medium">{client.code}</p>
+                            <h2 className="text-2xl font-bold">{client.name}</h2>
+                            <div className="flex gap-2 mt-2">
+                                <span className={cn(
+                                    "px-2 py-0.5 text-xs font-medium rounded-full",
+                                    statusColors[client.status] || statusColors.Active
+                                )}>
+                                    {client.status}
+                                </span>
+                                <span className={cn(
+                                    "px-2 py-0.5 text-xs font-medium rounded-full",
+                                    categoryColors[client.category] || categoryColors.Regular
+                                )}>
+                                    {client.category}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)] space-y-6">
+                    {/* Statistics */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-violet-50 rounded-xl p-4 text-center">
+                            <p className="text-2xl font-bold text-violet-700">{client.stats.totalProductionRuns}</p>
+                            <p className="text-sm text-violet-600">Total Orders</p>
+                        </div>
+                        <div className="bg-blue-50 rounded-xl p-4 text-center">
+                            <p className="text-2xl font-bold text-blue-700">{client.stats.totalProductionVolume.toLocaleString()}</p>
+                            <p className="text-sm text-blue-600">Volume (m³)</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-xl p-4 text-center">
+                            <p className="text-2xl font-bold text-emerald-700">₦{(client.stats.totalExpenses / 1000).toFixed(0)}k</p>
+                            <p className="text-sm text-emerald-600">Revenue</p>
+                        </div>
+                    </div>
+
+                    {/* Contact Information */}
+                    <div className="bg-gray-50 rounded-xl p-5">
+                        <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                            <Phone size={16} />
+                            Contact Information
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">Phone</p>
+                                <p className="font-medium text-gray-900">{client.phone}</p>
+                            </div>
+                            {client.altPhone && (
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Alt. Phone</p>
+                                    <p className="font-medium text-gray-900">{client.altPhone}</p>
+                                </div>
+                            )}
+                            {client.email && (
+                                <div className="col-span-2">
+                                    <p className="text-xs text-gray-500 mb-1">Email</p>
+                                    <p className="font-medium text-gray-900">{client.email}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Address */}
+                    <div className="bg-gray-50 rounded-xl p-5">
+                        <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                            <MapPin size={16} />
+                            Address
+                        </h3>
+                        <p className="text-gray-900">{client.address}</p>
+                        <p className="text-gray-600">{client.city}, {client.state}</p>
+                    </div>
+
+                    {/* Primary Contact */}
+                    {client.primaryContact && (
+                        <div className="bg-gray-50 rounded-xl p-5">
+                            <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                                <UserCircle size={16} />
+                                Primary Contact
+                            </h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Name</p>
+                                    <p className="font-medium text-gray-900">{client.primaryContact.name}</p>
+                                </div>
+                                {client.primaryContact.role && (
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-1">Role</p>
+                                        <p className="font-medium text-gray-900">{client.primaryContact.role}</p>
+                                    </div>
+                                )}
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Phone</p>
+                                    <p className="font-medium text-gray-900">{client.primaryContact.phone}</p>
+                                </div>
+                                {client.primaryContact.email && (
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-1">Email</p>
+                                        <p className="font-medium text-gray-900">{client.primaryContact.email}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Business Details */}
+                    <div className="bg-gray-50 rounded-xl p-5">
+                        <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                            <FileText size={16} />
+                            Business Details
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">Client Type</p>
+                                <p className="font-medium text-gray-900">{client.type}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">Payment Terms</p>
+                                <p className="font-medium text-gray-900">{client.paymentTerms}</p>
+                            </div>
+                            {client.creditLimit && (
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Credit Limit</p>
+                                    <p className="font-medium text-gray-900">₦{client.creditLimit.toLocaleString()}</p>
+                                </div>
+                            )}
+                            {client.taxId && (
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Tax ID</p>
+                                    <p className="font-medium text-gray-900">{client.taxId}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Notes */}
+                    {client.notes && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+                            <h3 className="text-sm font-semibold text-amber-700 mb-2">Notes</h3>
+                            <p className="text-gray-700">{client.notes}</p>
+                        </div>
+                    )}
+
+                    {/* Member Since */}
+                    <div className="text-center text-sm text-gray-500">
+                        <Calendar size={14} className="inline mr-1" />
+                        Member since {new Date(client.createdAt).toLocaleDateString('en-NG', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                        })}
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end p-6 border-t border-gray-100 bg-gray-50/50">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2.5 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-colors"
+                    >
+                        Close
                     </button>
                 </div>
             </div>

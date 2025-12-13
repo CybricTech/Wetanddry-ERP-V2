@@ -15,6 +15,7 @@ import AddDocumentModal from './AddDocumentModal'
 import { deleteTruckDocument } from '@/lib/actions/trucks'
 import { FileText, Trash2 } from 'lucide-react'
 import { usePermissions } from '@/hooks/use-permissions'
+import { hasPermission, Permission } from '@/lib/permissions'
 
 interface TruckData {
     id: string
@@ -82,15 +83,24 @@ interface TruckData {
 
 interface TruckDetailsClientProps {
     truck: TruckData
+    userRole?: string
 }
 
-export default function TruckDetailsClient({ truck }: TruckDetailsClientProps) {
+export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClientProps) {
     const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
     const [showScheduleModal, setShowScheduleModal] = useState(false)
     const [showPartModal, setShowPartModal] = useState(false)
     const [showDocumentModal, setShowDocumentModal] = useState(false)
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
-    const { can } = usePermissions()
+    const { can: clientCan } = usePermissions()
+
+    // Use server-side role if available, otherwise fall back to client-side session
+    const can = (permission: Permission): boolean => {
+        if (userRole) {
+            return hasPermission(userRole, permission)
+        }
+        return clientCan(permission)
+    }
 
     const getStatusColor = (status: string) => {
         switch (status) {
