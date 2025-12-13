@@ -15,18 +15,29 @@ export default async function CRMPage() {
         redirect('/login')
     }
 
-    // Check permission
-    const userRole = session.user.role || 'Storekeeper'
-    if (!hasPermission(userRole, 'view_crm')) {
+    // Check permission - use the actual role string
+    const userRole = session.user.role
+    console.log('[CRM Page] User role:', userRole)
+    
+    if (!userRole || !hasPermission(userRole, 'view_crm')) {
+        console.log('[CRM Page] Permission denied for role:', userRole)
         redirect('/dashboard')
     }
 
-    // Fetch initial data
-    const clients = await getClients()
+    // Fetch initial data with error handling
+    let clients: any[] = []
+    try {
+        clients = await getClients()
+        console.log('[CRM Page] Loaded', clients.length, 'clients')
+    } catch (error) {
+        console.error('[CRM Page] Failed to load clients:', error)
+        // Continue with empty clients rather than crashing
+        clients = []
+    }
 
     return (
         <CRMClient
-            initialClients={clients as any}
+            initialClients={clients}
             userRole={userRole}
             userName={session.user.name || 'User'}
         />

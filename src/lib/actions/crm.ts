@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
-import { checkPermission } from '@/lib/permissions'
+import { checkPermission, hasPermission } from '@/lib/permissions'
 
 // ==================== CLIENT CODE GENERATION ====================
 
@@ -36,74 +36,87 @@ export async function getClients(filters?: {
     category?: string
     search?: string
 }) {
-    const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
-    checkPermission(session.user.role, 'view_crm')
+    try {
+        const session = await auth()
+        if (!session?.user?.role) {
+            console.error('[getClients] No user session or role')
+            return []
+        }
 
-    const where: any = {}
+        // Use hasPermission instead of checkPermission to avoid throwing
+        if (!hasPermission(session.user.role, 'view_crm')) {
+            console.error('[getClients] User lacks view_crm permission:', session.user.role)
+            return []
+        }
 
-    if (filters?.status && filters.status !== 'all') {
-        where.status = filters.status
-    }
+        const where: any = {}
 
-    if (filters?.category && filters.category !== 'all') {
-        where.category = filters.category
-    }
+        if (filters?.status && filters.status !== 'all') {
+            where.status = filters.status
+        }
 
-    if (filters?.search) {
-        where.OR = [
-            { name: { contains: filters.search, mode: 'insensitive' } },
-            { code: { contains: filters.search, mode: 'insensitive' } },
-            { email: { contains: filters.search, mode: 'insensitive' } },
-            { phone: { contains: filters.search } }
-        ]
-    }
+        if (filters?.category && filters.category !== 'all') {
+            where.category = filters.category
+        }
 
-    const clients = await prisma.client.findMany({
-        where,
-        include: {
-            contacts: {
-                where: { isPrimary: true },
-                take: 1
+        if (filters?.search) {
+            where.OR = [
+                { name: { contains: filters.search, mode: 'insensitive' } },
+                { code: { contains: filters.search, mode: 'insensitive' } },
+                { email: { contains: filters.search, mode: 'insensitive' } },
+                { phone: { contains: filters.search } }
+            ]
+        }
+
+        const clients = await prisma.client.findMany({
+            where,
+            include: {
+                contacts: {
+                    where: { isPrimary: true },
+                    take: 1
+                },
+                _count: {
+                    select: {
+                        productionRuns: true,
+                        expenses: true,
+                        exceptionLogs: true
+                    }
+                }
             },
-            _count: {
-                select: {
-                    productionRuns: true,
-                    expenses: true,
-                    exceptionLogs: true
-                }
-            }
-        },
-        orderBy: { createdAt: 'desc' }
-    })
-
-    // Calculate total production volume per client
-    const clientsWithStats = await Promise.all(
-        clients.map(async (client) => {
-            const productionStats = await prisma.productionRun.aggregate({
-                where: { clientId: client.id },
-                _sum: { quantity: true },
-                _count: true
-            })
-
-            const expenseStats = await prisma.expense.aggregate({
-                where: { clientId: client.id, status: 'Approved' },
-                _sum: { amount: true }
-            })
-
-            return {
-                ...client,
-                primaryContact: client.contacts[0] || null,
-                stats: {
-                    totalProductionRuns: productionStats._count,
-                    totalProductionVolume: productionStats._sum.quantity || 0,
-                    totalExpenses: expenseStats._sum.amount || 0
-                }
-            }
+            orderBy: { createdAt: 'desc' }
         })
-    )
 
-    return clientsWithStats
+        // Calculate total production volume per client
+        const clientsWithStats = await Promise.all(
+            clients.map(async (client) => {
+                const productionStats = await prisma.productionRun.aggregate({
+                    where: { clientId: client.id },
+                    _sum: { quantity: true },
+                    _count: true
+                })
+
+                const expenseStats = await prisma.expense.aggregate({
+                    where: { clientId: client.id, status: 'Approved' },
+                    _sum: { amount: true }
+                })
+
+                return {
+                    ...client,
+                    primaryContact: client.contacts[0] || null,
+                    stats: {
+                        totalProductionRuns: productionStats._count,
+                        totalProductionVolume: productionStats._sum.quantity || 0,
+                        totalExpenses: expenseStats._sum.amount || 0
+                    }
+                }
+            })
+        )
+
+        return clientsWithStats
+    } catch (error) {
+        console.error('[getClients] Error fetching clients:', error)
+        return []
+    }
 }
 
 /**
