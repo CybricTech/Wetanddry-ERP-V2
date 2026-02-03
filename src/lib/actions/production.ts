@@ -360,3 +360,270 @@ export async function createProductionRun(formData: FormData) {
 }
 
 // seedRecipes removed as per user request to manual input only
+
+// ==================== PRODUCTION SCHEDULING & VARIANCE ====================
+
+// Schedule a future production run
+export async function scheduleProductionRun(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'log_production')
+
+    const recipeId = formData.get('recipeId') as string
+    const siloId = formData.get('siloId') as string
+    const plannedQuantity = parseFloat(formData.get('plannedQuantity') as string)
+    const scheduledDate = formData.get('scheduledDate') as string
+    const plannedStartTime = formData.get('plannedStartTime') as string | null
+    const plannedEndTime = formData.get('plannedEndTime') as string | null
+    const clientId = formData.get('clientId') as string | null
+    const orderId = formData.get('orderId') as string | null
+    const notes = formData.get('notes') as string | null
+
+    if (!recipeId || !siloId || isNaN(plannedQuantity) || !scheduledDate) {
+        throw new Error('Recipe, silo, quantity, and scheduled date are required')
+    }
+
+    const recipe = await prisma.recipe.findUnique({
+        where: { id: recipeId },
+        include: { ingredients: { include: { inventoryItem: true } } }
+    })
+    if (!recipe) throw new Error('Recipe not found')
+
+    // Create scheduled production run with planned material usages
+    const run = await prisma.$transaction(async (tx) => {
+        const productionRun = await tx.productionRun.create({
+            data: {
+                recipeId,
+                siloId,
+                plannedQuantity,
+                quantity: 0, // Actual will be filled when executed
+                scheduledDate: new Date(scheduledDate),
+                plannedStartTime: plannedStartTime ? new Date(plannedStartTime) : null,
+                plannedEndTime: plannedEndTime ? new Date(plannedEndTime) : null,
+                status: 'Scheduled',
+                clientId: clientId || null,
+                orderId: orderId || null,
+                notes: notes || null,
+                operatorName: session.user.name || 'Unknown'
+            }
+        })
+
+        // Create planned material usages
+        for (const ingredient of recipe.ingredients) {
+            const plannedQty = ingredient.quantity * plannedQuantity
+            await tx.productionMaterialUsage.create({
+                data: {
+                    productionRunId: productionRun.id,
+                    inventoryItemId: ingredient.inventoryItem.id,
+                    plannedQuantity: plannedQty,
+                    unitCostAtTime: ingredient.inventoryItem.unitCost
+                }
+            })
+        }
+
+        return productionRun
+    })
+
+    revalidatePath('/production')
+    return { success: true, productionRun: run }
+}
+
+// Reschedule a production run
+export async function rescheduleProductionRun(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'log_production')
+
+    const productionRunId = formData.get('productionRunId') as string
+    const newScheduledDate = formData.get('newScheduledDate') as string
+    const delayReason = formData.get('delayReason') as string
+
+    if (!productionRunId || !newScheduledDate) {
+        throw new Error('Production run ID and new date are required')
+    }
+
+    const run = await prisma.productionRun.findUnique({ where: { id: productionRunId } })
+    if (!run) throw new Error('Production run not found')
+    if (!['Scheduled', 'Delayed'].includes(run.status)) {
+        throw new Error('Can only reschedule scheduled or delayed runs')
+    }
+
+    await prisma.productionRun.update({
+        where: { id: productionRunId },
+        data: {
+            scheduledDate: new Date(newScheduledDate),
+            rescheduledFrom: run.scheduledDate,
+            delayReason: delayReason || null,
+            status: 'Rescheduled'
+        }
+    })
+
+    revalidatePath('/production')
+    return { success: true }
+}
+
+// Start a scheduled production run
+export async function startProductionRun(productionRunId: string) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'log_production')
+
+    const run = await prisma.productionRun.findUnique({ where: { id: productionRunId } })
+    if (!run) throw new Error('Production run not found')
+    if (!['Scheduled', 'Rescheduled'].includes(run.status)) {
+        throw new Error('Can only start scheduled or rescheduled runs')
+    }
+
+    await prisma.productionRun.update({
+        where: { id: productionRunId },
+        data: {
+            actualStartTime: new Date(),
+            status: 'In Progress'
+        }
+    })
+
+    revalidatePath('/production')
+    return { success: true }
+}
+
+// Complete a production run with actual quantities
+export async function completeProductionRunWithVariance(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'log_production')
+
+    const productionRunId = formData.get('productionRunId') as string
+    const actualQuantity = parseFloat(formData.get('actualQuantity') as string)
+    const materialUsages = formData.get('materialUsages') as string // JSON
+
+    if (!productionRunId || isNaN(actualQuantity)) {
+        throw new Error('Production run ID and actual quantity are required')
+    }
+
+    const run = await prisma.productionRun.findUnique({
+        where: { id: productionRunId },
+        include: { materialUsages: { include: { inventoryItem: true } } }
+    })
+    if (!run) throw new Error('Production run not found')
+    if (run.status !== 'In Progress') throw new Error('Can only complete runs that are in progress')
+
+    // Parse material usages if provided
+    let usages: Array<{ materialUsageId: string; actualQuantity: number }> = []
+    try {
+        usages = JSON.parse(materialUsages || '[]')
+    } catch { /* ignore */ }
+
+    await prisma.$transaction(async (tx) => {
+        // Update actual material usages and calculate variances
+        for (const usage of run.materialUsages) {
+            const actualUsage = usages.find(u => u.materialUsageId === usage.id)
+            const actualQty = actualUsage?.actualQuantity ?? usage.plannedQuantity
+            const variance = actualQty - usage.plannedQuantity
+
+            await tx.productionMaterialUsage.update({
+                where: { id: usage.id },
+                data: {
+                    actualQuantity: actualQty,
+                    variance
+                }
+            })
+
+            // Deduct from inventory
+            await tx.inventoryItem.update({
+                where: { id: usage.inventoryItemId },
+                data: { quantity: { decrement: actualQty } }
+            })
+
+            // Create stock transaction
+            await tx.stockTransaction.create({
+                data: {
+                    itemId: usage.inventoryItemId,
+                    type: 'OUT',
+                    quantity: actualQty,
+                    reason: `Production Run ${run.id}`,
+                    status: 'Approved',
+                    performedBy: session.user.name || 'System',
+                    approvedBy: 'System',
+                    approvedAt: new Date()
+                }
+            })
+        }
+
+        // Update production run
+        await tx.productionRun.update({
+            where: { id: productionRunId },
+            data: {
+                quantity: actualQuantity,
+                actualEndTime: new Date(),
+                status: 'Completed'
+            }
+        })
+    })
+
+    revalidatePath('/production')
+    return { success: true }
+}
+
+// Get production variance report
+export async function getProductionVarianceReport(startDate?: Date, endDate?: Date) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+
+    const where: any = { status: 'Completed' }
+    if (startDate || endDate) {
+        where.createdAt = {}
+        if (startDate) where.createdAt.gte = startDate
+        if (endDate) where.createdAt.lte = endDate
+    }
+
+    const runs = await prisma.productionRun.findMany({
+        where,
+        include: {
+            recipe: true,
+            materialUsages: {
+                include: { inventoryItem: { select: { name: true, unit: true } } }
+            }
+        },
+        orderBy: { createdAt: 'desc' }
+    })
+
+    // Calculate variance statistics
+    const runsWithVariance = runs.filter(r => r.plannedQuantity && r.plannedQuantity !== r.quantity)
+
+    const summary = {
+        totalRuns: runs.length,
+        runsWithVariance: runsWithVariance.length,
+        totalPlanned: runs.reduce((sum, r) => sum + (r.plannedQuantity || r.quantity), 0),
+        totalActual: runs.reduce((sum, r) => sum + r.quantity, 0),
+        totalVariance: runs.reduce((sum, r) => sum + (r.quantity - (r.plannedQuantity || r.quantity)), 0)
+    }
+
+    // Material usage variance
+    const materialVariances = runs.flatMap(r => r.materialUsages)
+        .filter(u => u.variance !== null && u.variance !== 0)
+        .map(u => ({
+            materialName: u.inventoryItem.name,
+            planned: u.plannedQuantity,
+            actual: u.actualQuantity,
+            variance: u.variance,
+            unit: u.inventoryItem.unit
+        }))
+
+    return { runs, summary, materialVariances }
+}
+
+// Get scheduled production runs
+export async function getScheduledRuns() {
+    return prisma.productionRun.findMany({
+        where: {
+            status: { in: ['Scheduled', 'Rescheduled', 'Delayed'] }
+        },
+        include: {
+            recipe: true,
+            silo: true,
+            client: { select: { id: true, name: true } },
+            order: { select: { id: true, orderNumber: true } }
+        },
+        orderBy: { scheduledDate: 'asc' }
+    })
+}

@@ -128,16 +128,17 @@ model SparePartInventory {
 
 model StorageLocation {
   id          String   @id @default(cuid())
-  name        String   @unique // e.g., "Silo 1", "Silo 2", "Main Warehouse"
-  type        String   // e.g., "Silo", "Warehouse", "Shelf"
+  name        String   @unique // e.g., "Silo 1", "Silo 2", "Main Warehouse", "Container 1"
+  type        String   // "Silo", "Container", "Warehouse", "Shelf"
   description String?
-  capacity    Float?   // Maximum capacity (for silos, in kg)
+  capacity    Float?   // Maximum capacity (for silos/containers, in kg)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   items          InventoryItem[]
   productionRuns ProductionRun[]
+  stockReconciliations StockReconciliation[]
 }
 
 model InventoryItem {
@@ -162,6 +163,9 @@ model InventoryItem {
   
   transactions    StockTransaction[]
   materialRequests MaterialRequest[]
+  priceHistory    MaterialPriceHistory[]
+  reconciliationItems ReconciliationItem[]
+  productionMaterialUsages ProductionMaterialUsage[]
 
   // Approval workflow
   status          String   @default("Active") // "Pending", "Active", "Rejected"
@@ -233,6 +237,7 @@ model Recipe {
   ingredients RecipeIngredient[]
   runs        ProductionRun[]
   exceptionLogs ExceptionLog[]
+  orderLineItems OrderLineItem[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -261,14 +266,39 @@ model ProductionRun {
   orderRef    String?  // Client's PO/Order reference number
   deliveryAddress String? // Specific delivery location for this batch
   
-  quantity    Float    // Amount produced (m³)
+  // Order Linking
+  orderId         String?
+  order           SalesOrder? @relation(fields: [orderId], references: [id])
+  orderLineItemId String?
+  
+  // Scheduling
+  scheduledDate   DateTime?
+  plannedStartTime DateTime?
+  plannedEndTime  DateTime?
+  actualStartTime DateTime?
+  actualEndTime   DateTime?
+  
+  // Variance Tracking
+  plannedQuantity Float?   // Planned m³
+  quantity    Float    // Actual amount produced (m³)
   cementUsed  Float?   // Amount of cement deducted from silo (kg)
+  
+  // Status: "Scheduled" | "In Progress" | "Completed" | "Delayed" | "Rescheduled" | "Cancelled"
   status      String   @default("Completed")
+  
+  // Delay/Reschedule
+  delayReason     String?
+  rescheduledFrom DateTime?
+  
   notes       String?
   operatorName String?
   createdAt   DateTime @default(now())
   
+  // Material Usage Tracking
+  materialUsages ProductionMaterialUsage[]
+  
   @@index([clientId])
+  @@index([orderId])
 }
 
 // Diesel & Fuel Intelligence Module
@@ -448,12 +478,18 @@ model Client {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
+  // Wallet/Prepayment
+  walletBalance   Float    @default(0)  // Available prepayment credits
+  
   // Relations
   contacts        ClientContact[]
   documents       ClientDocument[]
   expenses        Expense[]
   productionRuns  ProductionRun[]
   exceptionLogs   ExceptionLog[]
+  projects        Project[]
+  prepayments     Prepayment[]
+  orders          SalesOrder[]
   
   @@index([code])
   @@index([status])
@@ -533,4 +569,236 @@ model Expense {
   @@index([category])
   @@index([date])
   @@index([status])
+}
+
+// ==================== PROJECT & ORDER MANAGEMENT MODULE ====================
+
+model Project {
+  id              String   @id @default(cuid())
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id])
+  name            String
+  description     String?
+  startDate       DateTime?
+  endDate         DateTime?
+  status          String   @default("Active") // Active, Completed, On Hold, Cancelled
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  orders          SalesOrder[]
+  prepayments     Prepayment[]
+  
+  @@index([clientId])
+  @@index([status])
+}
+
+model Prepayment {
+  id              String   @id @default(cuid())
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id])
+  projectId       String?
+  project         Project? @relation(fields: [projectId], references: [id])
+  amount          Float
+  paymentMethod   String   // Cash, Bank Transfer, Cheque
+  referenceNumber String?
+  notes           String?
+  status          String   @default("Received") // Received, Applied, Refunded
+  receivedDate    DateTime @default(now())
+  receivedBy      String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([clientId])
+  @@index([projectId])
+  @@index([status])
+}
+
+model SalesOrder {
+  id                  String   @id @default(cuid())
+  orderNumber         String   @unique
+  clientId            String
+  client              Client   @relation(fields: [clientId], references: [id])
+  projectId           String?
+  project             Project? @relation(fields: [projectId], references: [id])
+  
+  orderDate           DateTime @default(now())
+  requiredDate        DateTime?
+  deliveryAddress     String?
+  
+  // Status: "Draft" | "Pending" | "Active" | "Fulfilled" | "Closed" | "Cancelled"
+  status              String   @default("Draft")
+  totalAmount         Float    @default(0)
+  amountPaid          Float    @default(0)
+  activationThreshold Float    @default(0.3) // 30% default to activate order
+  
+  notes               String?
+  createdBy           String
+  approvedBy          String?
+  approvedAt          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  lineItems           OrderLineItem[]
+  payments            Payment[]
+  paymentSchedule     PaymentScheduleItem[]
+  productionRuns      ProductionRun[]
+  
+  @@index([clientId])
+  @@index([projectId])
+  @@index([status])
+  @@index([orderDate])
+}
+
+model OrderLineItem {
+  id              String     @id @default(cuid())
+  orderId         String
+  order           SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recipeId        String
+  recipe          Recipe     @relation(fields: [recipeId], references: [id])
+  
+  cubicMeters     Float      // m³ ordered
+  unitPrice       Float      // Price per m³
+  lineTotal       Float      // cubicMeters * unitPrice
+  productType     String     // Cached recipe name/code
+  
+  deliveredQty    Float      @default(0) // m³ delivered
+  status          String     @default("Pending") // Pending, Partial, Fulfilled
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  
+  @@index([orderId])
+  @@index([recipeId])
+}
+
+model Payment {
+  id              String     @id @default(cuid())
+  orderId         String
+  order           SalesOrder @relation(fields: [orderId], references: [id])
+  
+  amount          Float
+  paymentDate     DateTime   @default(now())
+  paymentMethod   String     // Cash, Bank Transfer, Cheque, Prepayment Drawdown
+  referenceNumber String?
+  prepaymentId    String?    // If drawing from prepayment
+  
+  status          String     @default("Received") // Received, Verified, Bounced
+  receivedBy      String
+  notes           String?
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  
+  @@index([orderId])
+  @@index([paymentDate])
+}
+
+model PaymentScheduleItem {
+  id              String     @id @default(cuid())
+  orderId         String
+  order           SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  dueDate         DateTime
+  amount          Float
+  description     String?    // e.g., "30% Deposit", "2nd Installment"
+  status          String     @default("Pending") // Pending, Paid, Overdue
+  paidDate        DateTime?
+  paymentId       String?    // Link to actual payment
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  
+  @@index([orderId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+// ==================== PRICE HISTORY & COSTING MODULE ====================
+
+model MaterialPriceHistory {
+  id              String        @id @default(cuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  
+  price           Float
+  effectiveDate   DateTime      @default(now())
+  source          String?       // "Delivery", "Manual Adjustment", "Market Update"
+  transactionId   String?       // Link to StockTransaction if from delivery
+  notes           String?
+  recordedBy      String
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([inventoryItemId])
+  @@index([effectiveDate])
+}
+
+// ==================== STOCK RECONCILIATION MODULE ====================
+
+model StockReconciliation {
+  id                  String           @id @default(cuid())
+  reconciliationDate  DateTime         @default(now())
+  locationId          String?          // Null means all locations
+  location            StorageLocation? @relation(fields: [locationId], references: [id])
+  
+  status              String           @default("Draft") // Draft, In Progress, Completed, Cancelled
+  totalVariance       Float            @default(0)
+  varianceValue       Float            @default(0)
+  
+  performedBy         String
+  approvedBy          String?
+  approvedAt          DateTime?
+  notes               String?
+  
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  
+  items               ReconciliationItem[]
+  
+  @@index([locationId])
+  @@index([status])
+  @@index([reconciliationDate])
+}
+
+model ReconciliationItem {
+  id                  String              @id @default(cuid())
+  reconciliationId    String
+  reconciliation      StockReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  inventoryItemId     String
+  inventoryItem       InventoryItem       @relation(fields: [inventoryItemId], references: [id])
+  
+  systemQuantity      Float               // Quantity per system
+  physicalQuantity    Float               // Actual count
+  variance            Float               // physicalQuantity - systemQuantity
+  varianceValue       Float               // variance * unitCost
+  reason              String?             // Loss, Gain, Damage, Theft, Error
+  
+  adjustmentPosted    Boolean             @default(false)
+  transactionId       String?             // Link to created StockTransaction
+  
+  createdAt           DateTime            @default(now())
+  
+  @@index([reconciliationId])
+  @@index([inventoryItemId])
+}
+
+// ==================== PRODUCTION MATERIAL USAGE TRACKING ====================
+
+model ProductionMaterialUsage {
+  id                String        @id @default(cuid())
+  productionRunId   String
+  productionRun     ProductionRun @relation(fields: [productionRunId], references: [id], onDelete: Cascade)
+  inventoryItemId   String
+  inventoryItem     InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  
+  plannedQuantity   Float         // From recipe calculation
+  actualQuantity    Float?        // Actual used
+  variance          Float?        // actual - planned
+  unitCostAtTime    Float?        // For costing
+  
+  createdAt         DateTime      @default(now())
+  
+  @@index([productionRunId])
+  @@index([inventoryItemId])
 }

@@ -67,7 +67,13 @@ export type Permission =
     | 'view_crm'
     | 'manage_clients'
     | 'manage_expenses'
-    | 'view_expense_reports';
+    | 'approve_expenses'
+    | 'view_expense_reports'
+
+    // Orders & Payments
+    | 'manage_orders'
+    | 'approve_orders'
+    | 'view_orders';
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     [Role.SUPER_ADMIN]: [
@@ -106,7 +112,12 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_crm',
         'manage_clients',
         'manage_expenses',
+        'approve_expenses',
         'view_expense_reports',
+        // Orders
+        'manage_orders',
+        'approve_orders',
+        'view_orders',
     ],
     [Role.MANAGER]: [
         'view_staff',
@@ -135,7 +146,12 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_crm',
         'manage_clients',
         'manage_expenses',
+        'approve_expenses',
         'view_expense_reports',
+        // Orders
+        'manage_orders',
+        'approve_orders',
+        'view_orders',
     ],
     [Role.STOREKEEPER]: [
         'create_inventory_item',
@@ -149,6 +165,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_exceptions',
         'log_fuel',
         'view_fuel_logs',
+        'view_orders',
     ],
     [Role.ACCOUNTANT]: [
         'view_fleet',
@@ -166,6 +183,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_crm',
         'manage_expenses',
         'view_expense_reports',
+        'view_orders',
     ],
 };
 

@@ -4,11 +4,11 @@ import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
-import { 
-    notifyApprovers, 
-    notifyRequester, 
+import {
+    notifyApprovers,
+    notifyRequester,
     checkAndNotifyLowStock,
-    checkAndNotifySiloCritical 
+    checkAndNotifySiloCritical
 } from '@/lib/actions/notifications'
 
 // ==================== INVENTORY STATS & QUERIES ====================
@@ -2018,3 +2018,218 @@ export async function exportValuationReportCSV() {
     return [headers, ...rows].join('\n')
 }
 
+// ==================== MATERIAL PRICE HISTORY ====================
+
+// Record a price change for an inventory item
+export async function recordPriceChange(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'approve_stock_transactions')
+
+    const inventoryItemId = formData.get('inventoryItemId') as string
+    const price = parseFloat(formData.get('price') as string)
+    const source = formData.get('source') as string | null
+    const notes = formData.get('notes') as string | null
+
+    if (!inventoryItemId) throw new Error('Inventory item is required')
+    if (isNaN(price) || price < 0) throw new Error('Valid price required')
+
+    const item = await prisma.inventoryItem.findUnique({ where: { id: inventoryItemId } })
+    if (!item) throw new Error('Item not found')
+
+    // Create price history entry
+    const priceHistory = await prisma.materialPriceHistory.create({
+        data: {
+            inventoryItemId,
+            price,
+            source: source || 'Manual Adjustment',
+            notes: notes || null,
+            recordedBy: session.user.name || 'Unknown'
+        }
+    })
+
+    // Update item's current unit cost
+    await prisma.inventoryItem.update({
+        where: { id: inventoryItemId },
+        data: {
+            unitCost: price,
+            totalValue: item.quantity * price
+        }
+    })
+
+    revalidatePath('/inventory')
+    return { success: true, priceHistory }
+}
+
+// Get price history for an item
+export async function getItemPriceHistory(inventoryItemId: string, limit: number = 50) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+
+    const history = await prisma.materialPriceHistory.findMany({
+        where: { inventoryItemId },
+        orderBy: { effectiveDate: 'desc' },
+        take: limit
+    })
+
+    const item = await prisma.inventoryItem.findUnique({
+        where: { id: inventoryItemId },
+        select: { name: true, unitCost: true, unit: true }
+    })
+
+    // Calculate price change metrics
+    if (history.length >= 2) {
+        const latest = history[0].price
+        const previous = history[1].price
+        const oldest = history[history.length - 1].price
+
+        return {
+            item,
+            history,
+            metrics: {
+                currentPrice: latest,
+                previousPrice: previous,
+                oldestPrice: oldest,
+                changeFromPrevious: latest - previous,
+                changePercentFromPrevious: previous > 0 ? ((latest - previous) / previous) * 100 : 0,
+                changeFromOldest: latest - oldest,
+                changePercentFromOldest: oldest > 0 ? ((latest - oldest) / oldest) * 100 : 0
+            }
+        }
+    }
+
+    return { item, history, metrics: null }
+}
+
+// Calculate Weighted Average Cost for an item based on recent transactions
+export async function calculateWAC(inventoryItemId: string) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+
+    const item = await prisma.inventoryItem.findUnique({
+        where: { id: inventoryItemId }
+    })
+    if (!item) throw new Error('Item not found')
+
+    // Get approved stock-in transactions with cost data
+    const transactions = await prisma.stockTransaction.findMany({
+        where: {
+            itemId: inventoryItemId,
+            type: 'IN',
+            status: 'Approved',
+            unitCostAtTime: { not: null }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Last 100 transactions
+    })
+
+    if (transactions.length === 0) {
+        return {
+            wac: item.unitCost,
+            transactionCount: 0,
+            totalQuantity: 0,
+            totalValue: 0,
+            message: 'No transaction history - using current unit cost'
+        }
+    }
+
+    // Calculate WAC = Sum(Qty × Price) / Sum(Qty)
+    let totalQuantity = 0
+    let totalValue = 0
+
+    for (const txn of transactions) {
+        if (txn.unitCostAtTime) {
+            totalQuantity += txn.quantity
+            totalValue += txn.quantity * txn.unitCostAtTime
+        }
+    }
+
+    const wac = totalQuantity > 0 ? totalValue / totalQuantity : item.unitCost
+
+    return {
+        wac,
+        transactionCount: transactions.length,
+        totalQuantity,
+        totalValue,
+        currentUnitCost: item.unitCost,
+        difference: wac - item.unitCost,
+        differencePercent: item.unitCost > 0 ? ((wac - item.unitCost) / item.unitCost) * 100 : 0
+    }
+}
+
+// Apply WAC as the new unit cost
+export async function applyWACAsUnitCost(inventoryItemId: string) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+    checkPermission(session.user.role, 'approve_stock_transactions')
+
+    const wacResult = await calculateWAC(inventoryItemId)
+    const item = await prisma.inventoryItem.findUnique({ where: { id: inventoryItemId } })
+    if (!item) throw new Error('Item not found')
+
+    // Record the price change
+    await prisma.materialPriceHistory.create({
+        data: {
+            inventoryItemId,
+            price: wacResult.wac,
+            source: 'WAC Calculation',
+            notes: `WAC calculated from ${wacResult.transactionCount} transactions. Previous: ₦${item.unitCost.toLocaleString()}`,
+            recordedBy: session.user.name || 'Unknown'
+        }
+    })
+
+    // Update item
+    await prisma.inventoryItem.update({
+        where: { id: inventoryItemId },
+        data: {
+            unitCost: wacResult.wac,
+            totalValue: item.quantity * wacResult.wac
+        }
+    })
+
+    revalidatePath('/inventory')
+    return { success: true, newUnitCost: wacResult.wac }
+}
+
+// Get all items with price changes (for dashboard/alerts)
+export async function getItemsWithPriceChanges(days: number = 30) {
+    const session = await auth()
+    if (!session?.user?.role) throw new Error('Unauthorized')
+
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+
+    const recentPriceChanges = await prisma.materialPriceHistory.findMany({
+        where: { effectiveDate: { gte: startDate } },
+        include: { inventoryItem: { select: { id: true, name: true, unit: true, unitCost: true } } },
+        orderBy: { effectiveDate: 'desc' }
+    })
+
+    // Group by item and calculate change
+    const itemChanges = new Map<string, { item: any; changes: any[]; latestPrice: number; oldestPrice: number }>()
+
+    for (const change of recentPriceChanges) {
+        const existing = itemChanges.get(change.inventoryItemId)
+        if (existing) {
+            existing.changes.push(change)
+            if (change.effectiveDate < new Date(existing.oldestPrice)) {
+                existing.oldestPrice = change.price
+            }
+        } else {
+            itemChanges.set(change.inventoryItemId, {
+                item: change.inventoryItem,
+                changes: [change],
+                latestPrice: change.price,
+                oldestPrice: change.price
+            })
+        }
+    }
+
+    return Array.from(itemChanges.values()).map(data => ({
+        ...data.item,
+        changeCount: data.changes.length,
+        latestPrice: data.latestPrice,
+        oldestPrice: data.oldestPrice,
+        priceChange: data.latestPrice - data.oldestPrice,
+        priceChangePercent: data.oldestPrice > 0 ? ((data.latestPrice - data.oldestPrice) / data.oldestPrice) * 100 : 0
+    }))
+}
