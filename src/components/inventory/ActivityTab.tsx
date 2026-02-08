@@ -7,7 +7,8 @@ import { useLiveUpdates, formatRefreshTime } from '@/hooks/use-live-updates';
 import { useRouter } from 'next/navigation';
 import {
     Clock, CheckCircle2, XCircle, Search, Filter, ChevronDown, ArrowDownRight, ArrowUpRight,
-    Package, FileText, History, Download, AlertCircle, Loader2, X, Eye, RefreshCw, Calendar, Radio
+    Package, FileText, History, Download, AlertCircle, Loader2, X, Eye, RefreshCw, Calendar, Radio,
+    Clipboard, Activity, Info
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
