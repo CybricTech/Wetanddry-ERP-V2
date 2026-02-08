@@ -7,8 +7,7 @@ import { useLiveUpdates, formatRefreshTime } from '@/hooks/use-live-updates';
 import { useRouter } from 'next/navigation';
 import {
     Clock, CheckCircle2, XCircle, Search, Filter, ChevronDown, ArrowDownRight, ArrowUpRight,
-    Package, FileText, History, Download, AlertCircle, Loader2, X, Eye, RefreshCw, Calendar, Radio,
-    Clipboard, Activity, Info
+    Package, FileText, History, Download, AlertCircle, Loader2, X, Eye, RefreshCw, Calendar, Radio
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -1043,7 +1042,7 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: StockTr
                     {(transaction.supplierName || transaction.invoiceNumber || transaction.waybillNumber || transaction.atcNumber || transaction.batchNumber) && (
                         <div className="space-y-4">
                             <h4 className="flex items-center gap-2 font-semibold text-gray-900 border-b border-gray-100 pb-2">
-                                <Clipboard size={18} className="text-gray-500" />
+                                <FileText size={18} className="text-gray-500" />
                                 Document References
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1060,7 +1059,7 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: StockTr
                     {/* Workflow Status */}
                     <div className="space-y-4">
                         <h4 className="flex items-center gap-2 font-semibold text-gray-900 border-b border-gray-100 pb-2">
-                            <Activity size={18} className="text-gray-500" />
+                            <History size={18} className="text-gray-500" />
                             Workflow Status
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1086,7 +1085,7 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: StockTr
                     {(transaction.reason || transaction.notes) && (
                         <div className="space-y-4">
                             <h4 className="flex items-center gap-2 font-semibold text-gray-900 border-b border-gray-100 pb-2">
-                                <Info size={18} className="text-gray-500" />
+                                <AlertCircle size={18} className="text-gray-500" />
                                 Notes
                             </h4>
                             {transaction.reason && (
