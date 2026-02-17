@@ -82,6 +82,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_staff', // Added
         'manage_fleet',
         'view_fleet', // Added
+        'manage_maintenance', // Added - was missing, caused crashes
         'manage_truck_documents',
         'view_truck_documents', // Added (just in case)
         'manage_inventory',
@@ -123,6 +124,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_staff',
         'view_fleet',
         'manage_maintenance',
+        'manage_truck_documents', // Added - was missing, caused crashes
         'view_truck_documents',
         'view_inventory', // Added - per documentation Manager can view inventory
         'approve_material_requests',

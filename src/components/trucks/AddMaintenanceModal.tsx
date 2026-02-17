@@ -1,7 +1,7 @@
 'use client'
 
 import { createMaintenanceRecord } from '@/lib/actions/trucks'
-import { X, Wrench } from 'lucide-react'
+import { X, Wrench, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
 
@@ -26,9 +26,15 @@ interface AddMaintenanceModalProps {
 
 export default function AddMaintenanceModal({ truckId, truckMileage, onClose }: AddMaintenanceModalProps) {
     const [mileage, setMileage] = useState(truckMileage.toString())
+    const [error, setError] = useState<string | null>(null)
 
     const handleSubmit = async (formData: FormData) => {
-        await createMaintenanceRecord(formData)
+        setError(null)
+        const result = await createMaintenanceRecord(formData)
+        if ('error' in result) {
+            setError(result.error)
+            return
+        }
         onClose()
     }
 
@@ -52,6 +58,13 @@ export default function AddMaintenanceModal({ truckId, truckMileage, onClose }: 
 
                 <form action={handleSubmit} className="p-6 space-y-5">
                     <input type="hidden" name="truckId" value={truckId} />
+
+                    {error && (
+                        <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2">
+                            <AlertCircle size={16} />
+                            {error}
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">

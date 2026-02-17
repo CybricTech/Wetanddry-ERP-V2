@@ -6,10 +6,10 @@ import prisma from '@/lib/prisma'
 import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
-import { 
-    notifyMaintenanceDue, 
-    notifyDocumentExpiring, 
-    notifySparePartsLow 
+import {
+    notifyMaintenanceDue,
+    notifyDocumentExpiring,
+    notifySparePartsLow
 } from '@/lib/actions/notifications'
 
 // ============ TRUCK CRUD OPERATIONS ============
@@ -138,49 +138,54 @@ export async function updateTruckMileage(id: string, mileage: number) {
 
 // ============ MAINTENANCE RECORDS ============
 
-export async function createMaintenanceRecord(formData: FormData) {
-    const truckId = formData.get('truckId') as string
-    const type = formData.get('type') as string
-    const date = formData.get('date') as string
-    const cost = formData.get('cost') as string
-    const mileageAtService = formData.get('mileageAtService') as string
-    const status = formData.get('status') as string
-    const notes = formData.get('notes') as string
-    const performedBy = formData.get('performedBy') as string
+export async function createMaintenanceRecord(formData: FormData): Promise<{ success: true } | { error: string }> {
+    try {
+        const truckId = formData.get('truckId') as string
+        const type = formData.get('type') as string
+        const date = formData.get('date') as string
+        const cost = formData.get('cost') as string
+        const mileageAtService = formData.get('mileageAtService') as string
+        const status = formData.get('status') as string
+        const notes = formData.get('notes') as string
+        const performedBy = formData.get('performedBy') as string
 
-    if (!truckId || !type || !date || !cost) {
-        throw new Error('Missing required fields')
+        if (!truckId || !type || !date || !cost) {
+            return { error: 'Missing required fields' }
+        }
+
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_maintenance')
+
+        await prisma.maintenanceRecord.create({
+            data: {
+                truckId,
+                type,
+                date: new Date(date),
+                cost: parseFloat(cost),
+                mileageAtService: mileageAtService ? parseInt(mileageAtService) : null,
+                status: status || 'Completed',
+                notes: notes || null,
+                performedBy: performedBy || null,
+            },
+        })
+
+        // Update truck's last service date
+        await prisma.truck.update({
+            where: { id: truckId },
+            data: {
+                lastServiceDate: new Date(date),
+                mileage: mileageAtService ? parseInt(mileageAtService) : undefined
+            },
+        })
+
+        revalidatePath(`/trucks/${truckId}`)
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to create maintenance record:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to create maintenance record' }
     }
-
-    const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
-    checkPermission(session.user.role, 'manage_maintenance')
-
-    await prisma.maintenanceRecord.create({
-        data: {
-            truckId,
-            type,
-
-            date: new Date(date),
-            cost: parseFloat(cost),
-            mileageAtService: mileageAtService ? parseInt(mileageAtService) : null,
-            status: status || 'Completed',
-            notes: notes || null,
-            performedBy: performedBy || null,
-        },
-    })
-
-    // Update truck's last service date
-    await prisma.truck.update({
-        where: { id: truckId },
-        data: {
-            lastServiceDate: new Date(date),
-            mileage: mileageAtService ? parseInt(mileageAtService) : undefined
-        },
-    })
-
-    revalidatePath(`/trucks/${truckId}`)
-    revalidatePath('/trucks')
 }
 
 export async function getMaintenanceRecords(truckId?: string) {
@@ -195,43 +200,48 @@ export async function getMaintenanceRecords(truckId?: string) {
 
 // ============ MAINTENANCE SCHEDULER ============
 
-export async function createMaintenanceSchedule(formData: FormData) {
-    const truckId = formData.get('truckId') as string
-    const type = formData.get('type') as string
-    const intervalType = formData.get('intervalType') as string
-    const intervalDays = formData.get('intervalDays') as string
-    const intervalMileage = formData.get('intervalMileage') as string
-    const nextDueDate = formData.get('nextDueDate') as string
-    const nextDueMileage = formData.get('nextDueMileage') as string
-    const priority = formData.get('priority') as string
-    const notes = formData.get('notes') as string
+export async function createMaintenanceSchedule(formData: FormData): Promise<{ success: true } | { error: string }> {
+    try {
+        const truckId = formData.get('truckId') as string
+        const type = formData.get('type') as string
+        const intervalType = formData.get('intervalType') as string
+        const intervalDays = formData.get('intervalDays') as string
+        const intervalMileage = formData.get('intervalMileage') as string
+        const nextDueDate = formData.get('nextDueDate') as string
+        const nextDueMileage = formData.get('nextDueMileage') as string
+        const priority = formData.get('priority') as string
+        const notes = formData.get('notes') as string
 
-    if (!truckId || !type || !intervalType) {
-        throw new Error('Missing required fields')
+        if (!truckId || !type || !intervalType) {
+            return { error: 'Missing required fields' }
+        }
+
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_maintenance')
+
+        await prisma.maintenanceSchedule.create({
+            data: {
+                truckId,
+                type,
+                intervalType,
+                intervalDays: intervalDays ? parseInt(intervalDays) : null,
+                intervalMileage: intervalMileage ? parseInt(intervalMileage) : null,
+                nextDueDate: nextDueDate ? new Date(nextDueDate) : null,
+                nextDueMileage: nextDueMileage ? parseInt(nextDueMileage) : null,
+                priority: priority || 'Normal',
+                notes: notes || null,
+                isActive: true,
+            },
+        })
+
+        revalidatePath(`/trucks/${truckId}`)
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to create maintenance schedule:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to create maintenance schedule' }
     }
-
-    const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
-    checkPermission(session.user.role, 'manage_maintenance')
-
-    await prisma.maintenanceSchedule.create({
-        data: {
-            truckId,
-            type,
-
-            intervalType,
-            intervalDays: intervalDays ? parseInt(intervalDays) : null,
-            intervalMileage: intervalMileage ? parseInt(intervalMileage) : null,
-            nextDueDate: nextDueDate ? new Date(nextDueDate) : null,
-            nextDueMileage: nextDueMileage ? parseInt(nextDueMileage) : null,
-            priority: priority || 'Normal',
-            notes: notes || null,
-            isActive: true,
-        },
-    })
-
-    revalidatePath(`/trucks/${truckId}`)
-    revalidatePath('/trucks')
 }
 
 export async function getMaintenanceSchedules(truckId?: string) {
@@ -326,57 +336,63 @@ export async function completeScheduledMaintenance(scheduleId: string, formData:
 
 // ============ COMPONENT LIFECYCLE TRACKING (PARTS) ============
 
-export async function createPart(formData: FormData) {
-    const truckId = formData.get('truckId') as string
-    const partNumber = formData.get('partNumber') as string
-    const name = formData.get('name') as string
-    const category = formData.get('category') as string
-    const position = formData.get('position') as string
-    const installedDate = formData.get('installedDate') as string
-    const lifespanMonths = formData.get('lifespanMonths') as string
-    const lifespanMileage = formData.get('lifespanMileage') as string
-    const purchasePrice = formData.get('purchasePrice') as string
-    const supplier = formData.get('supplier') as string
-    const warrantyExpiry = formData.get('warrantyExpiry') as string
-    const notes = formData.get('notes') as string
+export async function createPart(formData: FormData): Promise<{ success: true } | { error: string }> {
+    try {
+        const truckId = formData.get('truckId') as string
+        const partNumber = formData.get('partNumber') as string
+        const name = formData.get('name') as string
+        const category = formData.get('category') as string
+        const position = formData.get('position') as string
+        const installedDate = formData.get('installedDate') as string
+        const lifespanMonths = formData.get('lifespanMonths') as string
+        const lifespanMileage = formData.get('lifespanMileage') as string
+        const purchasePrice = formData.get('purchasePrice') as string
+        const supplier = formData.get('supplier') as string
+        const warrantyExpiry = formData.get('warrantyExpiry') as string
+        const notes = formData.get('notes') as string
 
-    if (!truckId || !partNumber || !name || !category || !installedDate || !lifespanMonths) {
-        throw new Error('Missing required fields')
+        if (!truckId || !partNumber || !name || !category || !installedDate || !lifespanMonths) {
+            return { error: 'Missing required fields' }
+        }
+
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_maintenance')
+
+        const truck = await prisma.truck.findUnique({ where: { id: truckId } })
+
+        // Calculate expected replacement date
+        const installDate = new Date(installedDate)
+        const expectedReplacementDate = new Date(installDate)
+        expectedReplacementDate.setMonth(expectedReplacementDate.getMonth() + parseInt(lifespanMonths))
+
+        await prisma.part.create({
+            data: {
+                truckId,
+                partNumber,
+                name,
+                category,
+                position: position || null,
+                installedDate: installDate,
+                lifespanMonths: parseInt(lifespanMonths),
+                lifespanMileage: lifespanMileage ? parseInt(lifespanMileage) : null,
+                mileageAtInstall: truck?.mileage || null,
+                expectedReplacementDate,
+                purchasePrice: purchasePrice ? parseFloat(purchasePrice) : null,
+                supplier: supplier || null,
+                warrantyExpiry: warrantyExpiry ? new Date(warrantyExpiry) : null,
+                notes: notes || null,
+                status: 'Active',
+            },
+        })
+
+        revalidatePath(`/trucks/${truckId}`)
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to create part:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to add component' }
     }
-
-    const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
-    checkPermission(session.user.role, 'manage_maintenance')
-
-    const truck = await prisma.truck.findUnique({ where: { id: truckId } })
-
-    // Calculate expected replacement date
-    const installDate = new Date(installedDate)
-    const expectedReplacementDate = new Date(installDate)
-    expectedReplacementDate.setMonth(expectedReplacementDate.getMonth() + parseInt(lifespanMonths))
-
-    await prisma.part.create({
-        data: {
-            truckId,
-            partNumber,
-            name,
-            category,
-            position: position || null,
-            installedDate: installDate,
-            lifespanMonths: parseInt(lifespanMonths),
-            lifespanMileage: lifespanMileage ? parseInt(lifespanMileage) : null,
-            mileageAtInstall: truck?.mileage || null,
-            expectedReplacementDate,
-            purchasePrice: purchasePrice ? parseFloat(purchasePrice) : null,
-            supplier: supplier || null,
-            warrantyExpiry: warrantyExpiry ? new Date(warrantyExpiry) : null,
-            notes: notes || null,
-            status: 'Active',
-        },
-    })
-
-    revalidatePath(`/trucks/${truckId}`)
-    revalidatePath('/trucks')
 }
 
 export async function getParts(truckId?: string) {
@@ -578,23 +594,23 @@ export async function getFleetStats() {
 
 // ============ TRUCK DOCUMENTS ============
 
-export async function uploadTruckDocument(formData: FormData) {
-    const truckId = formData.get('truckId') as string
-    const name = formData.get('name') as string
-    const type = formData.get('type') as string
-    const expiryDate = formData.get('expiryDate') as string
-    const notes = formData.get('notes') as string
-    const file = formData.get('file') as File
-
-    if (!truckId || !name || !type || !file) {
-        throw new Error('Missing required fields')
-    }
-
-    const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
-    checkPermission(session.user.role, 'manage_truck_documents')
-
+export async function uploadTruckDocument(formData: FormData): Promise<{ success: true } | { error: string }> {
     try {
+        const truckId = formData.get('truckId') as string
+        const name = formData.get('name') as string
+        const type = formData.get('type') as string
+        const expiryDate = formData.get('expiryDate') as string
+        const notes = formData.get('notes') as string
+        const file = formData.get('file') as File
+
+        if (!truckId || !name || !type || !file) {
+            return { error: 'Missing required fields' }
+        }
+
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_truck_documents')
+
         const uploadResult = await uploadToCloudinary(file, 'wet-and-dry/truck-documents')
 
         await prisma.truckDocument.create({
@@ -603,7 +619,6 @@ export async function uploadTruckDocument(formData: FormData) {
                 name,
                 type,
                 url: uploadResult.secure_url,
-
                 cloudinaryPublicId: uploadResult.public_id,
                 expiryDate: expiryDate ? new Date(expiryDate) : null,
                 notes: notes || null,
@@ -611,9 +626,10 @@ export async function uploadTruckDocument(formData: FormData) {
         })
 
         revalidatePath(`/trucks/${truckId}`)
+        return { success: true }
     } catch (error) {
         console.error('Failed to upload document:', error)
-        throw new Error('Failed to upload document')
+        return { error: error instanceof Error ? error.message : 'Failed to upload document' }
     }
 }
 
@@ -643,7 +659,7 @@ export async function deleteTruckDocument(id: string, truckId: string) {
 export async function checkMaintenanceDueByDate() {
     const now = new Date()
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-    
+
     try {
         const dueSchedules = await prisma.maintenanceSchedule.findMany({
             where: {
@@ -686,11 +702,11 @@ export async function checkMaintenanceDueByMileage() {
         })
 
         let notificationsSent = 0
-        
+
         for (const schedule of schedules) {
             const currentMileage = schedule.truck.mileage
             const dueMileage = schedule.nextDueMileage!
-            
+
             // Alert when within 500km of due mileage
             if (currentMileage >= dueMileage - 500) {
                 await notifyMaintenanceDue(
@@ -715,7 +731,7 @@ export async function checkMaintenanceDueByMileage() {
 export async function checkExpiringDocuments() {
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-    
+
     try {
         const expiringDocs = await prisma.truckDocument.findMany({
             where: {
@@ -769,14 +785,14 @@ export async function checkLowSpareParts() {
 // Run all fleet alert checks (can be called via cron job)
 export async function runFleetAlertChecks() {
     console.log('[Fleet] Running scheduled fleet alert checks...')
-    
+
     const results = {
         maintenanceDate: await checkMaintenanceDueByDate(),
         maintenanceMileage: await checkMaintenanceDueByMileage(),
         expiringDocuments: await checkExpiringDocuments(),
         lowSpareParts: await checkLowSpareParts(),
     }
-    
+
     console.log('[Fleet] Fleet alert checks complete:', results)
     return results
 }

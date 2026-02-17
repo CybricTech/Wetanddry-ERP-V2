@@ -33,7 +33,11 @@ export default function AddDocumentModal({ truckId, onClose }: AddDocumentModalP
         }
 
         try {
-            await uploadTruckDocument(formData)
+            const result = await uploadTruckDocument(formData)
+            if ('error' in result) {
+                setError(result.error)
+                return
+            }
             onClose()
         } catch (err) {
             setError('Failed to upload document. Please try again.')

@@ -1,7 +1,7 @@
 'use client'
 
 import { createPart } from '@/lib/actions/trucks'
-import { X, Cog } from 'lucide-react'
+import { X, Cog, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
 
@@ -26,9 +26,15 @@ interface AddPartModalProps {
 
 export default function AddPartModal({ truckId, truckMileage, onClose }: AddPartModalProps) {
     const [category, setCategory] = useState('')
+    const [error, setError] = useState<string | null>(null)
 
     const handleSubmit = async (formData: FormData) => {
-        await createPart(formData)
+        setError(null)
+        const result = await createPart(formData)
+        if ('error' in result) {
+            setError(result.error)
+            return
+        }
         onClose()
     }
 
@@ -80,6 +86,13 @@ export default function AddPartModal({ truckId, truckMileage, onClose }: AddPart
                 <form action={handleSubmit} className="p-6 space-y-5">
                     <input type="hidden" name="truckId" value={truckId} />
                     <input type="hidden" name="mileageAtInstall" value={truckMileage} />
+
+                    {error && (
+                        <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2">
+                            <AlertCircle size={16} />
+                            {error}
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>

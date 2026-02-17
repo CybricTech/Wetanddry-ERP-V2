@@ -1,7 +1,7 @@
 'use client'
 
 import { createMaintenanceSchedule } from '@/lib/actions/trucks'
-import { X, CalendarClock } from 'lucide-react'
+import { X, CalendarClock, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
 
@@ -26,9 +26,15 @@ interface ScheduleMaintenanceModalProps {
 
 export default function ScheduleMaintenanceModal({ truckId, truckMileage, onClose }: ScheduleMaintenanceModalProps) {
     const [intervalType, setIntervalType] = useState('date')
+    const [error, setError] = useState<string | null>(null)
 
     const handleSubmit = async (formData: FormData) => {
-        await createMaintenanceSchedule(formData)
+        setError(null)
+        const result = await createMaintenanceSchedule(formData)
+        if ('error' in result) {
+            setError(result.error)
+            return
+        }
         onClose()
     }
 
@@ -56,6 +62,13 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, onClos
 
                 <form action={handleSubmit} className="p-6 space-y-5">
                     <input type="hidden" name="truckId" value={truckId} />
+
+                    {error && (
+                        <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2">
+                            <AlertCircle size={16} />
+                            {error}
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -89,8 +102,8 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, onClos
                                     type="button"
                                     onClick={() => setIntervalType(type)}
                                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${intervalType === type
-                                            ? 'bg-green-100 text-green-700 border-2 border-green-500'
-                                            : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                                        ? 'bg-green-100 text-green-700 border-2 border-green-500'
+                                        : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
                                         }`}
                                 >
                                     {type === 'both' ? 'Both' : type.charAt(0).toUpperCase() + type.slice(1)}
