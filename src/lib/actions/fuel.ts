@@ -8,7 +8,6 @@ import { checkPermission, hasPermission } from '@/lib/permissions'
 
 export async function getFuelLogs() {
     const session = await auth()
-    // Gracefully handle missing role or missing permission
     if (!session?.user?.role || !hasPermission(session.user.role, 'view_fuel_logs')) {
         return []
     }
@@ -19,54 +18,107 @@ export async function getFuelLogs() {
     })
 }
 
-export async function logFuel(formData: FormData) {
-    const truckId = formData.get('truckId') as string
-    const liters = parseFloat(formData.get('liters') as string)
-    const cost = parseFloat(formData.get('cost') as string)
-    const newMileage = parseInt(formData.get('mileage') as string)
+export async function logFuel(formData: FormData): Promise<{ success: true } | { error: string }> {
+    try {
+        const truckId = formData.get('truckId') as string
+        const liters = parseFloat(formData.get('liters') as string)
+        const cost = parseFloat(formData.get('cost') as string)
+        const newMileage = parseInt(formData.get('mileage') as string)
 
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'log_fuel')
+
+        if (!truckId || isNaN(liters) || isNaN(cost) || isNaN(newMileage)) {
+            return { error: 'Invalid input. Please fill all fields correctly.' }
+        }
+
+        const truck = await prisma.truck.findUnique({
+            where: { id: truckId }
+        })
+
+        if (!truck) return { error: 'Truck not found' }
+
+        let efficiency = null
+
+        if (newMileage > truck.mileage) {
+            const distance = newMileage - truck.mileage
+            efficiency = distance / liters
+        }
+
+        await prisma.$transaction(async (tx) => {
+            await tx.fuelLog.create({
+                data: {
+                    truckId,
+                    liters,
+                    cost,
+                    mileage: newMileage,
+                    efficiency
+                }
+            })
+
+            await tx.truck.update({
+                where: { id: truckId },
+                data: { mileage: newMileage }
+            })
+        })
+
+        revalidatePath('/fuel')
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to log fuel:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to log fuel' }
+    }
+}
+
+// ============ FUEL DEPOSITS ============
+
+export async function getFuelDeposits() {
     const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
-    checkPermission(session.user.role, 'log_fuel')
-
-
-    if (!truckId || isNaN(liters) || isNaN(cost) || isNaN(newMileage)) {
-        throw new Error('Invalid input')
+    if (!session?.user?.role || !hasPermission(session.user.role, 'view_fuel_logs')) {
+        return []
     }
 
-    // Fetch truck to get previous mileage
-    const truck = await prisma.truck.findUnique({
-        where: { id: truckId }
+    return await prisma.fuelDeposit.findMany({
+        orderBy: { date: 'desc' }
     })
+}
 
-    if (!truck) throw new Error('Truck not found')
+export async function createFuelDeposit(formData: FormData): Promise<{ success: true } | { error: string }> {
+    try {
+        const liters = parseFloat(formData.get('liters') as string)
+        const pricePerLiter = parseFloat(formData.get('pricePerLiter') as string)
+        const supplier = formData.get('supplier') as string
+        const notes = formData.get('notes') as string
+        const dateStr = formData.get('date') as string
 
-    let efficiency = null
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_fuel')
 
-    // Calculate efficiency if mileage has increased
-    if (newMileage > truck.mileage) {
-        const distance = newMileage - truck.mileage
-        efficiency = distance / liters // km per liter
-    }
+        if (isNaN(liters) || liters <= 0 || isNaN(pricePerLiter) || pricePerLiter <= 0) {
+            return { error: 'Please enter valid liters and price per liter.' }
+        }
 
-    // Transaction: Create Log + Update Truck Mileage
-    await prisma.$transaction(async (tx) => {
-        await tx.fuelLog.create({
+        const totalCost = liters * pricePerLiter
+
+        await prisma.fuelDeposit.create({
             data: {
-                truckId,
+                date: dateStr ? new Date(dateStr) : new Date(),
                 liters,
-                cost,
-                mileage: newMileage,
-                efficiency
+                pricePerLiter,
+                totalCost,
+                supplier: supplier || null,
+                notes: notes || null,
+                recordedBy: session.user.name || session.user.email || 'Unknown',
             }
         })
 
-        await tx.truck.update({
-            where: { id: truckId },
-            data: { mileage: newMileage }
-        })
-    })
-
-    revalidatePath('/fuel')
-    revalidatePath('/trucks')
+        revalidatePath('/fuel')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to create fuel deposit:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to record fuel deposit' }
+    }
 }

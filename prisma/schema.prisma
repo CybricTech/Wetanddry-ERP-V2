@@ -316,6 +316,19 @@ model FuelLog {
   updatedAt   DateTime @updatedAt
 }
 
+model FuelDeposit {
+  id            String   @id @default(cuid())
+  date          DateTime @default(now())
+  liters        Float
+  pricePerLiter Float
+  totalCost     Float
+  supplier      String?
+  notes         String?
+  recordedBy    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 // Exception Handling Module (Dump & Divert)
 
 model ExceptionLog {
