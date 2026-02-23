@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  serverExternalPackages: ['@prisma/adapter-neon'],
 
   // Prevent chunk loading failures after redeployments
   async headers() {

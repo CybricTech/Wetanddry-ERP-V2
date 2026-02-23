@@ -1,11 +1,4 @@
-import { PrismaClient } from '@prisma/client'
-import { PrismaNeon } from '@prisma/adapter-neon'
-
-/**
- * Prisma Client Configuration
- * 
- * Uses Neon serverless driver when DATABASE_URL contains 'neon'
- */
+import { PrismaClient } from '@/generated/prisma'
 
 declare global {
     var prismaGlobal: PrismaClient | undefined
@@ -14,24 +7,21 @@ declare global {
 function createPrismaClient(): PrismaClient {
     const databaseUrl = process.env.DATABASE_URL
 
-    // Use Neon adapter for Neon PostgreSQL
     if (databaseUrl?.includes('neon')) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { PrismaNeon } = require('@prisma/adapter-neon')
         const adapter = new PrismaNeon({ connectionString: databaseUrl })
-        return new PrismaClient({ adapter })
+        return new PrismaClient({ adapter } as any)
     }
 
-    // Fallback to standard Prisma client
     return new PrismaClient()
 }
 
-// Create new client each time in serverless environments
-// to avoid connection pooling issues
 let prisma: PrismaClient
 
 if (process.env.NODE_ENV === 'production') {
     prisma = createPrismaClient()
 } else {
-    // In development, reuse the client across hot reloads
     if (!globalThis.prismaGlobal) {
         globalThis.prismaGlobal = createPrismaClient()
     }
