@@ -21,5 +21,5 @@ export default async function FinancePage() {
         redirect('/dashboard');
     }
 
-    return <FinanceClient currentUser={session.user.name || 'Unknown'} />;
+    return <FinanceClient currentUser={session.user.name || 'Unknown'} userRole={session.user.role || ''} />;
 }

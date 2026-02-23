@@ -1,9 +1,9 @@
 import { getTrucks, getFleetStats, getFleetAlerts } from '@/lib/actions/trucks'
 import Link from 'next/link'
 import {
-    Truck, Plus, Search, Filter, MoreHorizontal, MapPin, Calendar,
+    Truck, Plus, Search, Filter, MapPin, Calendar,
     Wrench, Package, AlertTriangle, CheckCircle, Clock, Gauge,
-    TrendingUp, DollarSign
+    DollarSign
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth } from '@/auth'
@@ -146,7 +146,7 @@ export default async function TrucksPage() {
                     <input
                         type="text"
                         placeholder="Search by plate number or model..."
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-transparent focus:bg-white border focus:border-blue-500 rounded-xl outline-none transition-all"
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm hover:border-blue-300 transition-all outline-none"
                     />
                 </div>
                 <div className="flex gap-3 w-full md:w-auto">

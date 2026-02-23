@@ -1132,7 +1132,7 @@ function StockModal({ type, item, items, currentUser, onClose }: {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className={cn(
                 "bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col transform transition-all",
-                isStockIn ? "max-w-3xl max-h-[90vh]" : "max-w-lg"
+                isStockIn ? "max-w-3xl max-h-[90vh]" : "max-w-lg max-h-[90vh]"
             )}>
                 {/* Header */}
                 <div className={cn(
@@ -1352,7 +1352,7 @@ function StockModal({ type, item, items, currentUser, onClose }: {
                                 </div>
                                 <div>
                                     <span className="font-semibold text-amber-900 block text-sm">Update stored unit cost</span>
-                                    <p className="text-xs text-amber-600 mt-0.5">Check this if the new price ({parseFloat(unitCost).toLocaleString()} ₦) should replace the current system price for future transactions.</p>
+                                    <p className="text-xs text-amber-600 mt-0.5">Check this to update the system price for this item to ₦{(parseFloat(unitCost) || 0).toLocaleString()} for all future transactions.</p>
                                 </div>
                             </label>
                         )}

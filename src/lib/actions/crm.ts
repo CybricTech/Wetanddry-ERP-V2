@@ -753,3 +753,122 @@ export async function getClientsForSelect() {
         return []
     }
 }
+
+/**
+ * Get CRM-specific metrics for the Analytics dashboard
+ */
+export async function getCRMMetrics() {
+    const session = await auth()
+    if (!session?.user?.role || !hasPermission(session.user.role, 'view_crm')) {
+        return null
+    }
+
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
+
+    const [
+        allClients,
+        newClientsThisMonth,
+        newClientsLastMonth,
+        allOrders,
+        topClients,
+    ] = await Promise.all([
+        // All clients with status/category breakdown
+        prisma.client.findMany({
+            select: { id: true, status: true, category: true, type: true, currentBalance: true, createdAt: true }
+        }),
+        // New clients this month (last 30 days)
+        prisma.client.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+        // New clients previous month (30-60 days ago)
+        prisma.client.count({ where: { createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } } }),
+        // All sales orders for pipeline view
+        prisma.salesOrder.findMany({
+            select: { status: true, totalAmount: true, amountPaid: true, orderDate: true, clientId: true }
+        }),
+        // Top 5 clients by total order value
+        prisma.client.findMany({
+            select: {
+                id: true,
+                name: true,
+                category: true,
+                orders: { select: { totalAmount: true, status: true } }
+            },
+            orderBy: { currentBalance: 'desc' },
+            take: 10,
+        }),
+    ])
+
+    // Client breakdown by status
+    const clientsByStatus = allClients.reduce((acc, c) => {
+        acc[c.status] = (acc[c.status] || 0) + 1
+        return acc
+    }, {} as Record<string, number>)
+
+    // Client breakdown by category
+    const clientsByCategory = allClients.reduce((acc, c) => {
+        acc[c.category] = (acc[c.category] || 0) + 1
+        return acc
+    }, {} as Record<string, number>)
+
+    // Client breakdown by type
+    const clientsByType = allClients.reduce((acc, c) => {
+        acc[c.type] = (acc[c.type] || 0) + 1
+        return acc
+    }, {} as Record<string, number>)
+
+    // Sales pipeline by status
+    const pipeline = allOrders.reduce((acc, o) => {
+        if (!acc[o.status]) acc[o.status] = { count: 0, value: 0 }
+        acc[o.status].count += 1
+        acc[o.status].value += o.totalAmount
+        return acc
+    }, {} as Record<string, { count: number; value: number }>)
+
+    // Revenue summary
+    const totalOrderValue = allOrders.reduce((sum, o) => sum + o.totalAmount, 0)
+    const totalCollected = allOrders.reduce((sum, o) => sum + o.amountPaid, 0)
+    const totalOutstanding = totalOrderValue - totalCollected
+    const collectionRate = totalOrderValue > 0 ? (totalCollected / totalOrderValue) * 100 : 0
+
+    // Top clients by order value
+    const topClientsByRevenue = topClients
+        .map(c => ({
+            name: c.name,
+            category: c.category,
+            totalOrders: c.orders.length,
+            totalValue: c.orders.reduce((sum, o) => sum + o.totalAmount, 0),
+            fulfilledValue: c.orders
+                .filter(o => o.status === 'Fulfilled' || o.status === 'Closed')
+                .reduce((sum, o) => sum + o.totalAmount, 0),
+        }))
+        .sort((a, b) => b.totalValue - a.totalValue)
+        .slice(0, 5)
+
+    // Order conversion: orders that went from Draft/Pending → Active/Fulfilled
+    const activeOrFulfilled = allOrders.filter(o =>
+        o.status === 'Active' || o.status === 'Fulfilled' || o.status === 'Closed'
+    ).length
+    const conversionRate = allOrders.length > 0 ? (activeOrFulfilled / allOrders.length) * 100 : 0
+
+    return {
+        clients: {
+            total: allClients.length,
+            newThisMonth: newClientsThisMonth,
+            newLastMonth: newClientsLastMonth,
+            byStatus: clientsByStatus,
+            byCategory: clientsByCategory,
+            byType: clientsByType,
+        },
+        pipeline: Object.entries(pipeline).map(([status, data]) => ({ status, ...data })),
+        revenue: {
+            totalOrderValue,
+            totalCollected,
+            totalOutstanding,
+            collectionRate,
+        },
+        topClients: topClientsByRevenue,
+        conversionRate,
+        totalOrders: allOrders.length,
+    }
+}

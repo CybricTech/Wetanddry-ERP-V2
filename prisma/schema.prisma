@@ -303,17 +303,33 @@ model ProductionRun {
 
 // Diesel & Fuel Intelligence Module
 
+model Equipment {
+  id          String    @id @default(cuid())
+  name        String    // e.g., "Generator 1", "Pump Station A"
+  type        String    // "Generator", "Pump", "Compressor", "Other"
+  status      String    @default("Active") // Active, Inactive, Maintenance
+  notes       String?
+  fuelLogs    FuelLog[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
 model FuelLog {
-  id          String   @id @default(cuid())
-  truckId     String
-  truck       Truck    @relation(fields: [truckId], references: [id])
-  date        DateTime @default(now())
+  id          String     @id @default(cuid())
+  truckId     String?
+  truck       Truck?     @relation(fields: [truckId], references: [id])
+  equipmentId String?
+  equipment   Equipment? @relation(fields: [equipmentId], references: [id])
+  date        DateTime   @default(now())
   liters      Float
   cost        Float
-  mileage     Int      // Mileage at time of fueling
-  efficiency  Float?   // Calculated km/L
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  mileage     Int?       // Mileage at time of fueling (trucks only)
+  efficiency  Float?     // Calculated km/L (trucks only)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([truckId])
+  @@index([equipmentId])
 }
 
 model FuelDeposit {
@@ -328,6 +344,7 @@ model FuelDeposit {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
 
 // Exception Handling Module (Dump & Divert)
 

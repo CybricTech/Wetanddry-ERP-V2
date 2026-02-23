@@ -13,55 +13,77 @@ export async function getFuelLogs() {
     }
 
     return await prisma.fuelLog.findMany({
-        include: { truck: true },
+        include: { truck: true, equipment: true },
         orderBy: { date: 'desc' }
     })
 }
 
 export async function logFuel(formData: FormData): Promise<{ success: true } | { error: string }> {
     try {
-        const truckId = formData.get('truckId') as string
+        const targetType = formData.get('targetType') as string // 'truck' or 'equipment'
+        const targetId = formData.get('targetId') as string
         const liters = parseFloat(formData.get('liters') as string)
         const cost = parseFloat(formData.get('cost') as string)
-        const newMileage = parseInt(formData.get('mileage') as string)
+        const mileageStr = formData.get('mileage') as string
+        const newMileage = mileageStr ? parseInt(mileageStr) : null
 
         const session = await auth()
         if (!session?.user?.role) return { error: 'Unauthorized' }
         checkPermission(session.user.role, 'log_fuel')
 
-        if (!truckId || isNaN(liters) || isNaN(cost) || isNaN(newMileage)) {
-            return { error: 'Invalid input. Please fill all fields correctly.' }
+        if (!targetId || isNaN(liters) || isNaN(cost)) {
+            return { error: 'Invalid input. Please fill all required fields.' }
         }
 
-        const truck = await prisma.truck.findUnique({
-            where: { id: truckId }
-        })
+        if (targetType === 'truck') {
+            if (newMileage === null || isNaN(newMileage)) {
+                return { error: 'Mileage is required for truck fuel issuance.' }
+            }
 
-        if (!truck) return { error: 'Truck not found' }
+            const truck = await prisma.truck.findUnique({
+                where: { id: targetId }
+            })
 
-        let efficiency = null
+            if (!truck) return { error: 'Truck not found' }
 
-        if (newMileage > truck.mileage) {
-            const distance = newMileage - truck.mileage
-            efficiency = distance / liters
-        }
+            let efficiency = null
+            if (newMileage > truck.mileage) {
+                const distance = newMileage - truck.mileage
+                efficiency = distance / liters
+            }
 
-        await prisma.$transaction(async (tx) => {
-            await tx.fuelLog.create({
+            await prisma.$transaction(async (tx) => {
+                await tx.fuelLog.create({
+                    data: {
+                        truckId: targetId,
+                        liters,
+                        cost,
+                        mileage: newMileage,
+                        efficiency
+                    }
+                })
+
+                await tx.truck.update({
+                    where: { id: targetId },
+                    data: { mileage: newMileage }
+                })
+            })
+        } else {
+            // Equipment issuance
+            const equipment = await prisma.equipment.findUnique({
+                where: { id: targetId }
+            })
+
+            if (!equipment) return { error: 'Equipment not found' }
+
+            await prisma.fuelLog.create({
                 data: {
-                    truckId,
+                    equipmentId: targetId,
                     liters,
                     cost,
-                    mileage: newMileage,
-                    efficiency
                 }
             })
-
-            await tx.truck.update({
-                where: { id: truckId },
-                data: { mileage: newMileage }
-            })
-        })
+        }
 
         revalidatePath('/fuel')
         revalidatePath('/trucks')
@@ -69,6 +91,50 @@ export async function logFuel(formData: FormData): Promise<{ success: true } | {
     } catch (error) {
         console.error('Failed to log fuel:', error)
         return { error: error instanceof Error ? error.message : 'Failed to log fuel' }
+    }
+}
+
+// ============ EQUIPMENT ============
+
+export async function getEquipment() {
+    const session = await auth()
+    if (!session?.user?.role || !hasPermission(session.user.role, 'view_fuel_logs')) {
+        return []
+    }
+
+    return await prisma.equipment.findMany({
+        where: { status: 'Active' },
+        orderBy: { name: 'asc' }
+    })
+}
+
+export async function createEquipment(formData: FormData): Promise<{ success: true } | { error: string }> {
+    try {
+        const name = formData.get('name') as string
+        const type = formData.get('type') as string
+        const notes = formData.get('notes') as string
+
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_fuel')
+
+        if (!name || !type) {
+            return { error: 'Name and type are required.' }
+        }
+
+        await prisma.equipment.create({
+            data: {
+                name,
+                type,
+                notes: notes || null,
+            }
+        })
+
+        revalidatePath('/fuel')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to create equipment:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to create equipment' }
     }
 }
 

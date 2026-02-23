@@ -4,6 +4,8 @@ import StaffDocuments from '@/components/staff/StaffDocuments'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { notFound } from 'next/navigation'
+import { auth } from '@/auth'
+import { hasPermission } from '@/lib/permissions'
 
 export default async function StaffDetailsPage({
     params,
@@ -11,11 +13,16 @@ export default async function StaffDetailsPage({
     params: Promise<{ id: string }>
 }) {
     const { id } = await params
-    const { data: staff } = await getStaffById(id)
+    const [{ data: staff }, session] = await Promise.all([
+        getStaffById(id),
+        auth()
+    ])
 
     if (!staff) {
         notFound()
     }
+
+    const canManageStaff = session?.user?.role ? hasPermission(session.user.role, 'manage_staff') : false
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
@@ -34,7 +41,7 @@ export default async function StaffDetailsPage({
 
             <StaffForm initialData={{ ...staff, email: staff.email ?? undefined }} isEditing />
 
-            <StaffDocuments staffId={staff.id} documents={staff.documents} />
+            <StaffDocuments staffId={staff.id} documents={staff.documents} canManageStaff={canManageStaff} />
         </div>
     )
 }

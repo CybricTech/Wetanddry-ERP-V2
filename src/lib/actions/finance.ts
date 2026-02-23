@@ -217,7 +217,8 @@ export async function getFuelCostBreakdown(period: '7days' | '30days' | '90days'
 
     // By truck
     const byTruck = logs.reduce((acc, log) => {
-        const truckName = log.truck.plateNumber
+        const truckName = log.truck?.plateNumber
+        if (!truckName) return acc
         if (!acc[truckName]) {
             acc[truckName] = { cost: 0, liters: 0, refills: 0 }
         }
@@ -263,7 +264,7 @@ export async function getFuelCostBreakdown(period: '7days' | '30days' | '90days'
         dailyData,
         recentLogs: logs.slice(0, 10).map(l => ({
             id: l.id,
-            truckName: l.truck.plateNumber,
+            truckName: l.truck?.plateNumber ?? 'Equipment',
             liters: l.liters,
             cost: l.cost,
             date: l.date

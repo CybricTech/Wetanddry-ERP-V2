@@ -87,7 +87,6 @@ export default function StaffForm({ initialData, isEditing = false }: StaffFormP
                 }
 
                 router.push('/staff')
-                router.refresh()
             } else {
                 setError(typeof result.error === 'string' ? result.error : 'Failed to save staff record')
             }

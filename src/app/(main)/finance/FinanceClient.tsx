@@ -1,10 +1,12 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
 import {
     Wallet, TrendingUp, TrendingDown, Package, Fuel, Wrench, Download,
     RefreshCw, Loader2, BarChart3, PieChart, ArrowDownRight, ArrowUpRight,
-    Building, Truck, Calendar, FileText, AlertTriangle, CheckCircle2
+    Building, Truck, Calendar, FileText, AlertTriangle, CheckCircle2,
+    Receipt, MapPin, Factory, Users, Building2, DollarSign, Clock,
+    AlertCircle, Plus, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,11 +38,25 @@ interface RecentTransaction {
     createdAt: Date;
 }
 
+interface Expense {
+    id: string
+    category: string
+    description: string
+    amount: number
+    date: Date
+    invoiceNumber: string | null
+    status: string
+    recordedBy: string
+    approvedBy: string | null
+    client: { id: string; code: string; name: string } | null
+    truck: { id: string; plateNumber: string } | null
+}
+
 // ==================== MAIN COMPONENT ====================
 
-export default function FinanceClient({ currentUser }: { currentUser: string }) {
+export default function FinanceClient({ currentUser, userRole }: { currentUser: string; userRole: string }) {
     const [loading, setLoading] = useState(true);
-    const [activeView, setActiveView] = useState<'overview' | 'inventory' | 'fuel' | 'maintenance'>('overview');
+    const [activeView, setActiveView] = useState<'overview' | 'inventory' | 'fuel' | 'maintenance' | 'expenses'>('overview');
     const [fuelPeriod, setFuelPeriod] = useState<'7days' | '30days' | '90days'>('30days');
     const [maintenancePeriod, setMaintenancePeriod] = useState<'30days' | '90days' | 'year'>('30days');
     const [isExporting, setIsExporting] = useState(false);
@@ -51,9 +67,25 @@ export default function FinanceClient({ currentUser }: { currentUser: string }) 
     const [fuelData, setFuelData] = useState<any>(null);
     const [maintenanceData, setMaintenanceData] = useState<any>(null);
 
+    // Expenses state
+    const [expenses, setExpenses] = useState<Expense[]>([]);
+    const [expenseFilter, setExpenseFilter] = useState({ category: 'all', status: 'all' });
+    const [showExpenseModal, setShowExpenseModal] = useState(false);
+    const [trucks, setTrucks] = useState<{ id: string; plateNumber: string }[]>([]);
+    const [clientsForSelect, setClientsForSelect] = useState<{ id: string; code: string; name: string }[]>([]);
+
+    const canManageExpenses = userRole ? ['Super Admin', 'Manager', 'Accountant'].includes(userRole) : false;
+    const canApproveExpenses = userRole ? ['Super Admin', 'Manager'].includes(userRole) : false;
+
     useEffect(() => {
         loadData();
     }, [activeView, fuelPeriod, maintenancePeriod]);
+
+    useEffect(() => {
+        if (activeView === 'expenses') {
+            loadExpenses();
+        }
+    }, [expenseFilter]);
 
     const loadData = async () => {
         setLoading(true);
@@ -74,6 +106,9 @@ export default function FinanceClient({ currentUser }: { currentUser: string }) 
                 const { getMaintenanceCostBreakdown } = await import('@/lib/actions/finance');
                 const data = await getMaintenanceCostBreakdown(maintenancePeriod);
                 setMaintenanceData(data);
+            } else if (activeView === 'expenses') {
+                await loadExpenses();
+                await loadTrucksAndClients();
             }
         } catch (error: any) {
             console.error('Failed to load finance data:', error);
@@ -165,6 +200,30 @@ export default function FinanceClient({ currentUser }: { currentUser: string }) 
         }
     };
 
+    async function loadExpenses() {
+        try {
+            const { getExpenses } = await import('@/lib/actions/crm');
+            const data = await getExpenses(expenseFilter);
+            setExpenses(data as Expense[]);
+        } catch (error) {
+            console.error('Failed to load expenses:', error);
+        }
+    }
+
+    async function loadTrucksAndClients() {
+        try {
+            const [{ getTrucks }, { getClientsForSelect }] = await Promise.all([
+                import('@/lib/actions/trucks'),
+                import('@/lib/actions/crm'),
+            ]);
+            const [trucksData, clientsData] = await Promise.all([getTrucks(), getClientsForSelect()]);
+            setTrucks(trucksData.map((t: any) => ({ id: t.id, plateNumber: t.plateNumber })));
+            setClientsForSelect(clientsData);
+        } catch (error) {
+            console.error('Failed to load trucks/clients:', error);
+        }
+    }
+
     return (
         <div className="space-y-6">
             {/* Page Header */}
@@ -174,7 +233,16 @@ export default function FinanceClient({ currentUser }: { currentUser: string }) 
                     <p className="text-gray-500 mt-1">Company-wide financial overview and analytics</p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                    {canManageExpenses && (
+                        <button
+                            onClick={() => setShowExpenseModal(true)}
+                            className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-medium flex items-center gap-2 transition-all shadow-sm"
+                        >
+                            <Plus size={16} />
+                            Record Expense
+                        </button>
+                    )}
                     {/* Export Buttons */}
                     <button
                         onClick={() => handleExport('csv')}
@@ -209,12 +277,13 @@ export default function FinanceClient({ currentUser }: { currentUser: string }) 
 
             {/* View Toggle */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-2">
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-wrap">
                     {[
                         { id: 'overview', label: 'Overview', icon: <BarChart3 size={18} /> },
                         { id: 'inventory', label: 'Inventory', icon: <Package size={18} /> },
                         { id: 'fuel', label: 'Fuel/Diesel', icon: <Fuel size={18} /> },
-                        { id: 'maintenance', label: 'Maintenance', icon: <Wrench size={18} /> }
+                        { id: 'maintenance', label: 'Maintenance', icon: <Wrench size={18} /> },
+                        { id: 'expenses', label: 'Expenses', icon: <Receipt size={18} /> },
                     ].map(view => (
                         <button
                             key={view.id}
@@ -260,7 +329,37 @@ export default function FinanceClient({ currentUser }: { currentUser: string }) 
                     {activeView === 'maintenance' && maintenanceData && (
                         <MaintenanceView data={maintenanceData} period={maintenancePeriod} setPeriod={setMaintenancePeriod} />
                     )}
+
+                    {/* Expenses View */}
+                    {activeView === 'expenses' && (
+                        <ExpensesView
+                            expenses={expenses}
+                            filter={expenseFilter}
+                            setFilter={setExpenseFilter}
+                            loading={false}
+                            canApprove={canApproveExpenses}
+                            onApprove={async (id) => {
+                                const { approveExpense } = await import('@/lib/actions/crm');
+                                const result = await approveExpense(id);
+                                if (result.success) loadExpenses();
+                                return result;
+                            }}
+                        />
+                    )}
                 </>
+            )}
+
+            {/* Record Expense Modal */}
+            {showExpenseModal && (
+                <ExpenseModal
+                    clients={clientsForSelect}
+                    trucks={trucks}
+                    onClose={() => setShowExpenseModal(false)}
+                    onSuccess={() => {
+                        setShowExpenseModal(false);
+                        loadExpenses();
+                    }}
+                />
             )}
         </div>
     );
@@ -782,4 +881,408 @@ function SummaryCard({ title, value, icon, color, subtitle, highlight }: {
             )}
         </div>
     );
+}
+
+// ==================== EXPENSES VIEW ====================
+
+function ExpensesView({
+    expenses,
+    filter,
+    setFilter,
+    loading,
+    canApprove,
+    onApprove
+}: {
+    expenses: Expense[]
+    filter: { category: string; status: string }
+    setFilter: (f: typeof filter) => void
+    loading: boolean
+    canApprove: boolean
+    onApprove: (id: string) => Promise<{ success: boolean; message?: string }>
+}) {
+    const [approving, setApproving] = useState<string | null>(null)
+
+    const categoryIcons: Record<string, React.ReactNode> = {
+        Transport: <MapPin size={16} />,
+        Materials: <Factory size={16} />,
+        Labor: <Users size={16} />,
+        Equipment: <Building2 size={16} />,
+        Maintenance: <Receipt size={16} />,
+        Administrative: <FileText size={16} />,
+        Other: <DollarSign size={16} />
+    }
+
+    const categoryColors: Record<string, string> = {
+        Transport: 'bg-blue-100 text-blue-600',
+        Materials: 'bg-amber-100 text-amber-600',
+        Labor: 'bg-green-100 text-green-600',
+        Equipment: 'bg-purple-100 text-purple-600',
+        Maintenance: 'bg-orange-100 text-orange-600',
+        Administrative: 'bg-gray-100 text-gray-600',
+        Other: 'bg-slate-100 text-slate-600'
+    }
+
+    const handleApprove = async (id: string) => {
+        setApproving(id)
+        await onApprove(id)
+        setApproving(null)
+    }
+
+    const totalApproved = expenses.filter(e => e.status === 'Approved').reduce((sum, e) => sum + e.amount, 0)
+    const totalPending = expenses.filter(e => e.status === 'Pending').reduce((sum, e) => sum + e.amount, 0)
+
+    return (
+        <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
+                        <Receipt size={22} className="text-violet-600" />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500">Total Expenses</p>
+                        <p className="text-xl font-bold text-gray-900">₦{expenses.reduce((s, e) => s + e.amount, 0).toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">{expenses.length} records</p>
+                    </div>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                        <CheckCircle2 size={22} className="text-green-600" />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500">Approved</p>
+                        <p className="text-xl font-bold text-green-700">₦{totalApproved.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">{expenses.filter(e => e.status === 'Approved').length} records</p>
+                    </div>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                        <Clock size={22} className="text-amber-600" />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500">Pending Approval</p>
+                        <p className="text-xl font-bold text-amber-700">₦{totalPending.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">{expenses.filter(e => e.status === 'Pending').length} records</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3">
+                <select
+                    value={filter.category}
+                    onChange={(e) => setFilter({ ...filter, category: e.target.value })}
+                    className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                >
+                    <option value="all">All Categories</option>
+                    <option value="Transport">Transport</option>
+                    <option value="Materials">Materials</option>
+                    <option value="Labor">Labor</option>
+                    <option value="Equipment">Equipment</option>
+                    <option value="Maintenance">Maintenance</option>
+                    <option value="Administrative">Administrative</option>
+                    <option value="Other">Other</option>
+                </select>
+                <select
+                    value={filter.status}
+                    onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+                    className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                >
+                    <option value="all">All Status</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
+            </div>
+
+            {/* Expenses List */}
+            {loading ? (
+                <div className="flex items-center justify-center py-20">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                </div>
+            ) : expenses.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Receipt className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900">No expenses found</h3>
+                    <p className="text-gray-500 mt-1">Use the "Record Expense" button above to get started.</p>
+                </div>
+            ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-50/80">
+                                <tr>
+                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
+                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Client</th>
+                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {expenses.map(expense => (
+                                    <tr key={expense.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className={cn(
+                                                    "p-2 rounded-lg",
+                                                    categoryColors[expense.category] || categoryColors.Other
+                                                )}>
+                                                    {categoryIcons[expense.category] || categoryIcons.Other}
+                                                </div>
+                                                <span className="font-medium text-gray-900">{expense.category}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <p className="text-gray-900 line-clamp-1">{expense.description}</p>
+                                            {expense.invoiceNumber && (
+                                                <p className="text-xs text-gray-500">Inv: {expense.invoiceNumber}</p>
+                                            )}
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            {expense.client ? (
+                                                <div>
+                                                    <p className="text-gray-900 font-medium">{expense.client.name}</p>
+                                                    <p className="text-xs text-gray-500">{expense.client.code}</p>
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-400 italic">General</span>
+                                            )}
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <span className="font-semibold text-gray-900">₦{expense.amount.toLocaleString()}</span>
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <span className="text-gray-600">
+                                                {new Date(expense.date).toLocaleDateString('en-NG', {
+                                                    day: 'numeric', month: 'short', year: 'numeric'
+                                                })}
+                                            </span>
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <span className={cn(
+                                                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium",
+                                                expense.status === 'Approved' && "bg-green-100 text-green-700",
+                                                expense.status === 'Pending' && "bg-amber-100 text-amber-700",
+                                                expense.status === 'Rejected' && "bg-red-100 text-red-700"
+                                            )}>
+                                                {expense.status === 'Approved' && <CheckCircle2 size={12} />}
+                                                {expense.status === 'Pending' && <Clock size={12} />}
+                                                {expense.status === 'Rejected' && <AlertCircle size={12} />}
+                                                {expense.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            {expense.status === 'Pending' && canApprove && (
+                                                <button
+                                                    onClick={() => handleApprove(expense.id)}
+                                                    disabled={approving === expense.id}
+                                                    className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                                                >
+                                                    {approving === expense.id ? (
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                    ) : 'Approve'}
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ==================== EXPENSE MODAL ====================
+
+function ExpenseModal({
+    clients,
+    trucks,
+    onClose,
+    onSuccess
+}: {
+    clients: { id: string; code: string; name: string }[]
+    trucks: { id: string; plateNumber: string }[]
+    onClose: () => void
+    onSuccess: () => void
+}) {
+    const [isPending, startTransition] = useTransition()
+    const [error, setError] = useState<string | null>(null)
+    const [category, setCategory] = useState('')
+
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault()
+        setError(null)
+        const formData = new FormData(e.currentTarget)
+        startTransition(async () => {
+            const { createExpense } = await import('@/lib/actions/crm')
+            const result = await createExpense(formData)
+            if (result.success) {
+                onSuccess()
+            } else {
+                setError(result.message)
+            }
+        })
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between p-6 border-b border-gray-100 shrink-0">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">Record Expense</h2>
+                        <p className="text-sm text-gray-500">Log a new business expense</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Form */}
+                <form id="expense-form" onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-5">
+                    {error && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+                            <AlertCircle size={16} />
+                            {error}
+                        </div>
+                    )}
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                        <select
+                            name="category"
+                            required
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        >
+                            <option value="">Select category...</option>
+                            <option value="Transport">Transport</option>
+                            <option value="Materials">Materials</option>
+                            <option value="Labor">Labor</option>
+                            <option value="Equipment">Equipment</option>
+                            <option value="Maintenance">Maintenance</option>
+                            <option value="Administrative">Administrative</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+                        <input
+                            type="text"
+                            name="description"
+                            required
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            placeholder="Brief description of the expense"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₦) *</label>
+                            <input
+                                type="number"
+                                name="amount"
+                                required
+                                min={1}
+                                step={0.01}
+                                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                placeholder="0.00"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                            <input
+                                type="date"
+                                name="date"
+                                defaultValue={new Date().toISOString().split('T')[0]}
+                                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Invoice/Receipt Number</label>
+                        <input
+                            type="text"
+                            name="invoiceNumber"
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            placeholder="Optional"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Client (if applicable)</label>
+                        <select
+                            name="clientId"
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        >
+                            <option value="">General expense (no client)</option>
+                            {clients.map(client => (
+                                <option key={client.id} value={client.id}>
+                                    {client.code} - {client.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {category === 'Transport' && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Truck</label>
+                            <select
+                                name="truckId"
+                                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            >
+                                <option value="">Select truck...</option>
+                                {trucks.map(truck => (
+                                    <option key={truck.id} value={truck.id}>
+                                        {truck.plateNumber}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <textarea
+                            name="notes"
+                            rows={2}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+                            placeholder="Additional notes..."
+                        />
+                    </div>
+                </form>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50/50 shrink-0">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-5 py-2.5 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        form="expense-form"
+                        disabled={isPending}
+                        className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {isPending && <Loader2 size={16} className="animate-spin" />}
+                        Record Expense
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
 }

@@ -5,12 +5,11 @@ import {
     Users, Building2, Plus, Search, Filter, MoreHorizontal,
     Phone, Mail, MapPin, Calendar, TrendingUp, DollarSign,
     ChevronRight, X, Loader2, AlertCircle, CheckCircle2,
-    Receipt, Factory, Clock, Star, UserCircle, FileText,
+    Star, UserCircle, FileText, Factory,
     ArrowUpRight, ArrowDownRight, Wallet, PieChart
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getClients, createClient, getExpenses, createExpense, approveExpense, getExpenseAnalytics, getClientsForSelect } from '@/lib/actions/crm'
-import { getTrucks } from '@/lib/actions/trucks'
+import { getClients, createClient, getCRMMetrics } from '@/lib/actions/crm'
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -47,33 +46,25 @@ interface Client {
     }
 }
 
-interface Expense {
-    id: string
-    category: string
-    description: string
-    amount: number
-    date: Date
-    invoiceNumber: string | null
-    status: string
-    recordedBy: string
-    approvedBy: string | null
-    client: { id: string; code: string; name: string } | null
-    truck: { id: string; plateNumber: string } | null
-}
-
-interface ExpenseAnalytics {
-    summary: {
-        totalExpenses: number
-        expenseCount: number
-        avgExpenseAmount: number
+interface CRMMetrics {
+    clients: {
+        total: number
+        newThisMonth: number
+        newLastMonth: number
+        byStatus: Record<string, number>
+        byCategory: Record<string, number>
+        byType: Record<string, number>
     }
-    byCategory: { name: string; count: number; total: number; percentage: number }[]
-    byClient: { name: string; count: number; total: number; percentage: number }[]
-}
-
-interface Truck {
-    id: string
-    plateNumber: string
+    pipeline: { status: string; count: number; value: number }[]
+    revenue: {
+        totalOrderValue: number
+        totalCollected: number
+        totalOutstanding: number
+        collectionRate: number
+    }
+    topClients: { name: string; category: string; totalOrders: number; totalValue: number; fulfilledValue: number }[]
+    conversionRate: number
+    totalOrders: number
 }
 
 // ==================== MAIN COMPONENT ====================
@@ -85,36 +76,23 @@ interface CRMClientProps {
 }
 
 export default function CRMClient({ initialClients, userRole, userName }: CRMClientProps) {
-    const [activeTab, setActiveTab] = useState<'clients' | 'expenses' | 'analytics'>('clients')
+    const [activeTab, setActiveTab] = useState<'clients' | 'analytics'>('clients')
     const [clients, setClients] = useState<Client[]>(initialClients)
-    const [expenses, setExpenses] = useState<Expense[]>([])
-    const [analytics, setAnalytics] = useState<ExpenseAnalytics | null>(null)
-    const [trucks, setTrucks] = useState<Truck[]>([])
-    const [clientsForSelect, setClientsForSelect] = useState<{ id: string; code: string; name: string }[]>([])
+    const [analytics, setAnalytics] = useState<CRMMetrics | null>(null)
 
     // Modal states
     const [showClientModal, setShowClientModal] = useState(false)
-    const [showExpenseModal, setShowExpenseModal] = useState(false)
 
     // Filter states
     const [clientFilter, setClientFilter] = useState({ status: 'all', category: 'all', search: '' })
-    const [expenseFilter, setExpenseFilter] = useState({ category: 'all', status: 'all' })
-    const [analyticsPeriod, setAnalyticsPeriod] = useState<'7days' | '30days' | '90days' | 'year'>('30days')
 
     const [isPending, startTransition] = useTransition()
     const [loading, setLoading] = useState(false)
 
     const canManageClients = ['Super Admin', 'Manager'].includes(userRole)
-    const canManageExpenses = ['Super Admin', 'Manager', 'Accountant'].includes(userRole)
-    const canApproveExpenses = ['Super Admin', 'Manager'].includes(userRole)
 
     // Load data based on active tab
     useEffect(() => {
-        if (activeTab === 'expenses' && expenses.length === 0) {
-            loadExpenses()
-            loadTrucks()
-            loadClientsForSelect()
-        }
         if (activeTab === 'analytics' && !analytics) {
             loadAnalytics()
         }
@@ -132,53 +110,17 @@ export default function CRMClient({ initialClients, userRole, userName }: CRMCli
         }
     }
 
-    async function loadExpenses() {
-        setLoading(true)
-        try {
-            const data = await getExpenses(expenseFilter)
-            setExpenses(data as Expense[])
-        } catch (error) {
-            console.error('Failed to load expenses:', error)
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    async function loadTrucks() {
-        try {
-            const data = await getTrucks()
-            setTrucks(data.map(t => ({ id: t.id, plateNumber: t.plateNumber })))
-        } catch (error) {
-            console.error('Failed to load trucks:', error)
-        }
-    }
-
-    async function loadClientsForSelect() {
-        try {
-            const data = await getClientsForSelect()
-            setClientsForSelect(data)
-        } catch (error) {
-            console.error('Failed to load clients for select:', error)
-        }
-    }
-
     async function loadAnalytics() {
         setLoading(true)
         try {
-            const data = await getExpenseAnalytics(analyticsPeriod)
-            setAnalytics(data)
+            const data = await getCRMMetrics()
+            if (data) setAnalytics(data)
         } catch (error) {
             console.error('Failed to load analytics:', error)
         } finally {
             setLoading(false)
         }
     }
-
-    useEffect(() => {
-        if (activeTab === 'analytics') {
-            loadAnalytics()
-        }
-    }, [analyticsPeriod])
 
     // Filter effect for clients
     useEffect(() => {
@@ -189,12 +131,6 @@ export default function CRMClient({ initialClients, userRole, userName }: CRMCli
         }, 300)
         return () => clearTimeout(timer)
     }, [clientFilter])
-
-    useEffect(() => {
-        if (activeTab === 'expenses') {
-            loadExpenses()
-        }
-    }, [expenseFilter])
 
     return (
         <div className="space-y-6">
@@ -207,19 +143,10 @@ export default function CRMClient({ initialClients, userRole, userName }: CRMCli
                         </div>
                         Customer Relationship
                     </h1>
-                    <p className="text-gray-600 mt-1">Manage clients, track expenses, and view analytics</p>
+                    <p className="text-gray-600 mt-1">Manage clients and view analytics</p>
                 </div>
 
                 <div className="flex gap-3">
-                    {canManageExpenses && (
-                        <button
-                            onClick={() => setShowExpenseModal(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium shadow-sm"
-                        >
-                            <Receipt size={18} />
-                            Record Expense
-                        </button>
-                    )}
                     {canManageClients && (
                         <button
                             onClick={() => setShowClientModal(true)}
@@ -236,7 +163,6 @@ export default function CRMClient({ initialClients, userRole, userName }: CRMCli
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5 inline-flex">
                 {[
                     { id: 'clients', label: 'Clients', icon: Building2 },
-                    { id: 'expenses', label: 'Expenses', icon: Receipt },
                     { id: 'analytics', label: 'Analytics', icon: PieChart }
                 ].map(tab => (
                     <button
@@ -266,28 +192,8 @@ export default function CRMClient({ initialClients, userRole, userName }: CRMCli
                 />
             )}
 
-            {activeTab === 'expenses' && (
-                <ExpensesTab
-                    expenses={expenses}
-                    filter={expenseFilter}
-                    setFilter={setExpenseFilter}
-                    loading={loading || isPending}
-                    canApprove={canApproveExpenses}
-                    onApprove={async (id) => {
-                        const result = await approveExpense(id)
-                        if (result.success) loadExpenses()
-                        return result
-                    }}
-                />
-            )}
-
             {activeTab === 'analytics' && analytics && (
-                <AnalyticsTab
-                    analytics={analytics}
-                    period={analyticsPeriod}
-                    setPeriod={setAnalyticsPeriod}
-                    loading={loading}
-                />
+                <AnalyticsTab analytics={analytics} loading={loading} />
             )}
 
             {/* Create Client Modal */}
@@ -301,18 +207,6 @@ export default function CRMClient({ initialClients, userRole, userName }: CRMCli
                 />
             )}
 
-            {/* Create Expense Modal */}
-            {showExpenseModal && (
-                <ExpenseModal
-                    clients={clientsForSelect}
-                    trucks={trucks}
-                    onClose={() => setShowExpenseModal(false)}
-                    onSuccess={() => {
-                        setShowExpenseModal(false)
-                        loadExpenses()
-                    }}
-                />
-            )}
         </div>
     )
 }
@@ -493,343 +387,225 @@ function ClientsTab({
     )
 }
 
-// ==================== EXPENSES TAB ====================
-
-function ExpensesTab({
-    expenses,
-    filter,
-    setFilter,
-    loading,
-    canApprove,
-    onApprove
-}: {
-    expenses: Expense[]
-    filter: { category: string; status: string }
-    setFilter: (f: typeof filter) => void
-    loading: boolean
-    canApprove: boolean
-    onApprove: (id: string) => Promise<{ success: boolean; message: string }>
-}) {
-    const [approving, setApproving] = useState<string | null>(null)
-
-    const categoryIcons: Record<string, React.ReactNode> = {
-        Transport: <MapPin size={16} />,
-        Materials: <Factory size={16} />,
-        Labor: <Users size={16} />,
-        Equipment: <Building2 size={16} />,
-        Maintenance: <Receipt size={16} />,
-        Administrative: <FileText size={16} />,
-        Other: <DollarSign size={16} />
-    }
-
-    const categoryColors: Record<string, string> = {
-        Transport: 'bg-blue-100 text-blue-600',
-        Materials: 'bg-amber-100 text-amber-600',
-        Labor: 'bg-green-100 text-green-600',
-        Equipment: 'bg-purple-100 text-purple-600',
-        Maintenance: 'bg-orange-100 text-orange-600',
-        Administrative: 'bg-gray-100 text-gray-600',
-        Other: 'bg-slate-100 text-slate-600'
-    }
-
-    const handleApprove = async (id: string) => {
-        setApproving(id)
-        await onApprove(id)
-        setApproving(null)
-    }
-
-    return (
-        <div className="space-y-4">
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3">
-                <select
-                    value={filter.category}
-                    onChange={(e) => setFilter({ ...filter, category: e.target.value })}
-                    className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all"
-                >
-                    <option value="all">All Categories</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Materials">Materials</option>
-                    <option value="Labor">Labor</option>
-                    <option value="Equipment">Equipment</option>
-                    <option value="Maintenance">Maintenance</option>
-                    <option value="Administrative">Administrative</option>
-                    <option value="Other">Other</option>
-                </select>
-                <select
-                    value={filter.status}
-                    onChange={(e) => setFilter({ ...filter, status: e.target.value })}
-                    className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all"
-                >
-                    <option value="all">All Status</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Approved">Approved</option>
-                    <option value="Rejected">Rejected</option>
-                </select>
-            </div>
-
-            {/* Expenses List */}
-            {loading ? (
-                <div className="flex items-center justify-center py-20">
-                    <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
-                </div>
-            ) : expenses.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Receipt className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900">No expenses found</h3>
-                    <p className="text-gray-500 mt-1">Record your first expense to get started.</p>
-                </div>
-            ) : (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50/80">
-                                <tr>
-                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
-                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Client</th>
-                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {expenses.map(expense => (
-                                    <tr key={expense.id} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className={cn(
-                                                    "p-2 rounded-lg",
-                                                    categoryColors[expense.category] || categoryColors.Other
-                                                )}>
-                                                    {categoryIcons[expense.category] || categoryIcons.Other}
-                                                </div>
-                                                <span className="font-medium text-gray-900">{expense.category}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-5 py-4">
-                                            <p className="text-gray-900 line-clamp-1">{expense.description}</p>
-                                            {expense.invoiceNumber && (
-                                                <p className="text-xs text-gray-500">Inv: {expense.invoiceNumber}</p>
-                                            )}
-                                        </td>
-                                        <td className="px-5 py-4">
-                                            {expense.client ? (
-                                                <div>
-                                                    <p className="text-gray-900 font-medium">{expense.client.name}</p>
-                                                    <p className="text-xs text-gray-500">{expense.client.code}</p>
-                                                </div>
-                                            ) : (
-                                                <span className="text-gray-400 italic">General</span>
-                                            )}
-                                        </td>
-                                        <td className="px-5 py-4">
-                                            <span className="font-semibold text-gray-900">₦{expense.amount.toLocaleString()}</span>
-                                        </td>
-                                        <td className="px-5 py-4">
-                                            <span className="text-gray-600">
-                                                {new Date(expense.date).toLocaleDateString('en-NG', {
-                                                    day: 'numeric',
-                                                    month: 'short',
-                                                    year: 'numeric'
-                                                })}
-                                            </span>
-                                        </td>
-                                        <td className="px-5 py-4">
-                                            <span className={cn(
-                                                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium",
-                                                expense.status === 'Approved' && "bg-green-100 text-green-700",
-                                                expense.status === 'Pending' && "bg-amber-100 text-amber-700",
-                                                expense.status === 'Rejected' && "bg-red-100 text-red-700"
-                                            )}>
-                                                {expense.status === 'Approved' && <CheckCircle2 size={12} />}
-                                                {expense.status === 'Pending' && <Clock size={12} />}
-                                                {expense.status === 'Rejected' && <AlertCircle size={12} />}
-                                                {expense.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-5 py-4">
-                                            {expense.status === 'Pending' && canApprove && (
-                                                <button
-                                                    onClick={() => handleApprove(expense.id)}
-                                                    disabled={approving === expense.id}
-                                                    className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                                                >
-                                                    {approving === expense.id ? (
-                                                        <Loader2 size={14} className="animate-spin" />
-                                                    ) : (
-                                                        'Approve'
-                                                    )}
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-        </div>
-    )
-}
-
 // ==================== ANALYTICS TAB ====================
 
-function AnalyticsTab({
-    analytics,
-    period,
-    setPeriod,
-    loading
-}: {
-    analytics: ExpenseAnalytics
-    period: string
-    setPeriod: (p: '7days' | '30days' | '90days' | 'year') => void
-    loading: boolean
-}) {
+function AnalyticsTab({ analytics, loading }: { analytics: CRMMetrics; loading: boolean }) {
+    const pipelineOrder = ['Draft', 'Pending', 'Active', 'Fulfilled', 'Closed', 'Cancelled']
+    const pipelineColors: Record<string, string> = {
+        Draft: 'bg-gray-400',
+        Pending: 'bg-amber-400',
+        Active: 'bg-blue-500',
+        Fulfilled: 'bg-emerald-500',
+        Closed: 'bg-violet-500',
+        Cancelled: 'bg-red-400',
+    }
+    const categoryColors: Record<string, string> = {
+        VIP: 'bg-amber-400',
+        Regular: 'bg-blue-400',
+        New: 'bg-emerald-400',
+        Dormant: 'bg-gray-400',
+    }
+
+    const maxPipelineValue = Math.max(...analytics.pipeline.map(p => p.value), 1)
+    const acquisitionTrend = analytics.clients.newLastMonth > 0
+        ? ((analytics.clients.newThisMonth - analytics.clients.newLastMonth) / analytics.clients.newLastMonth * 100)
+        : analytics.clients.newThisMonth > 0 ? 100 : 0
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
+            </div>
+        )
+    }
+
     return (
         <div className="space-y-6">
-            {/* Period Selector */}
-            <div className="flex gap-2">
-                {[
-                    { id: '7days', label: '7 Days' },
-                    { id: '30days', label: '30 Days' },
-                    { id: '90days', label: '90 Days' },
-                    { id: 'year', label: 'Year' }
-                ].map(p => (
-                    <button
-                        key={p.id}
-                        onClick={() => setPeriod(p.id as '7days' | '30days' | '90days' | 'year')}
-                        className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                            period === p.id
-                                ? "bg-violet-600 text-white"
-                                : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
-                        )}
-                    >
-                        {p.label}
-                    </button>
-                ))}
+            {/* Row 1: Key KPIs */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Clients</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-1">{analytics.clients.total}</p>
+                    <p className="text-xs text-gray-500 mt-1">{analytics.clients.byStatus['Active'] || 0} active</p>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">New This Month</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-1">{analytics.clients.newThisMonth}</p>
+                    <p className={cn("text-xs mt-1 flex items-center gap-1", acquisitionTrend >= 0 ? "text-emerald-600" : "text-red-500")}>
+                        {acquisitionTrend >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                        {Math.abs(acquisitionTrend).toFixed(0)}% vs last month
+                    </p>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pipeline Value</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-1">
+                        ₦{(analytics.revenue.totalOrderValue / 1_000_000).toFixed(1)}M
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{analytics.totalOrders} total orders</p>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Collection Rate</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-1">{analytics.revenue.collectionRate.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                        ₦{(analytics.revenue.totalOutstanding / 1_000_000).toFixed(1)}M outstanding
+                    </p>
+                </div>
             </div>
 
-            {loading ? (
-                <div className="flex items-center justify-center py-20">
-                    <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
+            {/* Row 2: Revenue + Pipeline */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Revenue Summary */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <DollarSign size={18} className="text-emerald-600" /> Revenue Summary
+                    </h3>
+                    <div className="space-y-4">
+                        <div>
+                            <div className="flex justify-between text-sm mb-1">
+                                <span className="text-gray-600">Total Order Value</span>
+                                <span className="font-semibold text-gray-900">₦{analytics.revenue.totalOrderValue.toLocaleString()}</span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full" />
+                        </div>
+                        <div>
+                            <div className="flex justify-between text-sm mb-1">
+                                <span className="text-gray-600">Collected</span>
+                                <span className="font-semibold text-emerald-600">₦{analytics.revenue.totalCollected.toLocaleString()}</span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                    style={{ width: `${analytics.revenue.collectionRate}%` }}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <div className="flex justify-between text-sm mb-1">
+                                <span className="text-gray-600">Outstanding</span>
+                                <span className="font-semibold text-red-500">₦{analytics.revenue.totalOutstanding.toLocaleString()}</span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-red-400 rounded-full transition-all duration-500"
+                                    style={{ width: `${100 - analytics.revenue.collectionRate}%` }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="mt-5 pt-4 border-t border-gray-100">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Order Conversion Rate</span>
+                            <span className="font-bold text-violet-600">{analytics.conversionRate.toFixed(1)}%</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">Orders that became Active, Fulfilled, or Closed</p>
+                    </div>
                 </div>
-            ) : (
-                <>
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-violet-100 rounded-xl">
-                                    <Wallet className="w-6 h-6 text-violet-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Total Expenses</p>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        ₦{analytics.summary.totalExpenses.toLocaleString()}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-blue-100 rounded-xl">
-                                    <Receipt className="w-6 h-6 text-blue-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Expense Count</p>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        {analytics.summary.expenseCount}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-green-100 rounded-xl">
-                                    <TrendingUp className="w-6 h-6 text-green-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Avg. Expense</p>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        ₦{analytics.summary.avgExpenseAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Breakdown Cards */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* By Category */}
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                            <h3 className="text-lg font-bold text-gray-900 mb-4">Expenses by Category</h3>
-                            <div className="space-y-3">
-                                {analytics.byCategory.map((cat, idx) => (
-                                    <div key={cat.name} className="flex items-center gap-3">
-                                        <div className="w-8 text-sm font-medium text-gray-500">#{idx + 1}</div>
-                                        <div className="flex-1">
-                                            <div className="flex justify-between mb-1">
-                                                <span className="font-medium text-gray-900">{cat.name}</span>
-                                                <span className="text-gray-600">₦{cat.total.toLocaleString()}</span>
-                                            </div>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-500"
-                                                    style={{ width: `${cat.percentage}%` }}
-                                                />
-                                            </div>
+                {/* Sales Pipeline */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <TrendingUp size={18} className="text-blue-600" /> Sales Pipeline
+                    </h3>
+                    <div className="space-y-3">
+                        {pipelineOrder.map(status => {
+                            const entry = analytics.pipeline.find(p => p.status === status)
+                            if (!entry) return null
+                            const widthPct = (entry.value / maxPipelineValue) * 100
+                            return (
+                                <div key={status} className="flex items-center gap-3">
+                                    <div className="w-20 text-xs font-medium text-gray-600">{status}</div>
+                                    <div className="flex-1">
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-gray-500">{entry.count} orders</span>
+                                            <span className="font-medium text-gray-700">₦{entry.value.toLocaleString()}</span>
                                         </div>
-                                        <div className="w-12 text-right text-sm text-gray-500">
-                                            {cat.percentage.toFixed(1)}%
+                                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                            <div
+                                                className={cn("h-full rounded-full transition-all duration-500", pipelineColors[status] || 'bg-gray-400')}
+                                                style={{ width: `${widthPct}%` }}
+                                            />
                                         </div>
                                     </div>
-                                ))}
-                                {analytics.byCategory.length === 0 && (
-                                    <p className="text-gray-500 text-center py-4">No expense data available</p>
-                                )}
-                            </div>
-                        </div>
+                                </div>
+                            )
+                        })}
+                        {analytics.pipeline.length === 0 && (
+                            <p className="text-gray-400 text-center py-6">No order data yet</p>
+                        )}
+                    </div>
+                </div>
+            </div>
 
-                        {/* By Client */}
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                            <h3 className="text-lg font-bold text-gray-900 mb-4">Top Clients by Expenses</h3>
-                            <div className="space-y-3">
-                                {analytics.byClient.map((client, idx) => (
-                                    <div key={client.name} className="flex items-center gap-3">
-                                        <div className="w-8 text-sm font-medium text-gray-500">#{idx + 1}</div>
-                                        <div className="flex-1">
-                                            <div className="flex justify-between mb-1">
-                                                <span className="font-medium text-gray-900 truncate">{client.name}</span>
-                                                <span className="text-gray-600">₦{client.total.toLocaleString()}</span>
-                                            </div>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500"
-                                                    style={{ width: `${client.percentage}%` }}
-                                                />
-                                            </div>
+            {/* Row 3: Client Breakdown + Top Clients */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Client breakdown by category */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Users size={18} className="text-violet-600" /> Client Breakdown
+                    </h3>
+                    <div className="space-y-3">
+                        {Object.entries(analytics.clients.byCategory).map(([cat, count]) => {
+                            const pct = analytics.clients.total > 0 ? (count / analytics.clients.total) * 100 : 0
+                            return (
+                                <div key={cat} className="flex items-center gap-3">
+                                    <span className={cn("w-2 h-2 rounded-full shrink-0", categoryColors[cat] || 'bg-gray-400')} />
+                                    <div className="flex-1">
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span className="font-medium text-gray-800">{cat}</span>
+                                            <span className="text-gray-500">{count} clients</span>
                                         </div>
-                                        <div className="w-12 text-right text-sm text-gray-500">
-                                            {client.count}
+                                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                            <div
+                                                className={cn("h-full rounded-full transition-all duration-500", categoryColors[cat] || 'bg-gray-400')}
+                                                style={{ width: `${pct}%` }}
+                                            />
                                         </div>
                                     </div>
-                                ))}
-                                {analytics.byClient.length === 0 && (
-                                    <p className="text-gray-500 text-center py-4">No client expense data available</p>
-                                )}
-                            </div>
+                                    <span className="w-10 text-right text-xs text-gray-400">{pct.toFixed(0)}%</span>
+                                </div>
+                            )
+                        })}
+                        {/* Status pill summary */}
+                        <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
+                            {Object.entries(analytics.clients.byStatus).map(([status, count]) => (
+                                <span key={status} className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                    {status}: {count}
+                                </span>
+                            ))}
                         </div>
                     </div>
-                </>
-            )}
+                </div>
+
+                {/* Top clients by order value */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Star size={18} className="text-amber-500" /> Top Clients by Revenue
+                    </h3>
+                    <div className="space-y-3">
+                        {analytics.topClients.length === 0 ? (
+                            <p className="text-gray-400 text-center py-6">No order data yet</p>
+                        ) : analytics.topClients.map((client, idx) => (
+                            <div key={client.name} className="flex items-center gap-3">
+                                <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                                    {idx + 1}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-baseline">
+                                        <span className="font-medium text-gray-900 text-sm truncate">{client.name}</span>
+                                        <span className="font-bold text-gray-900 text-sm ml-2 shrink-0">
+                                            ₦{client.totalValue.toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-xs text-gray-400">{client.totalOrders} orders</span>
+                                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">{client.category}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
         </div>
     )
 }
@@ -1114,216 +890,6 @@ function ClientModal({
                     >
                         {isPending && <Loader2 size={16} className="animate-spin" />}
                         Create Client
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-// ==================== EXPENSE MODAL ====================
-
-function ExpenseModal({
-    clients,
-    trucks,
-    onClose,
-    onSuccess
-}: {
-    clients: { id: string; code: string; name: string }[]
-    trucks: { id: string; plateNumber: string }[]
-    onClose: () => void
-    onSuccess: () => void
-}) {
-    const [isPending, startTransition] = useTransition()
-    const [error, setError] = useState<string | null>(null)
-    const [category, setCategory] = useState('')
-
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault()
-        setError(null)
-
-        const formData = new FormData(e.currentTarget)
-
-        startTransition(async () => {
-            const result = await createExpense(formData)
-            if (result.success) {
-                onSuccess()
-            } else {
-                setError(result.message)
-            }
-        })
-    }
-
-    return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900">Record Expense</h2>
-                        <p className="text-sm text-gray-500">Log a new business expense</p>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)] space-y-5">
-                    {error && (
-                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
-                            <AlertCircle size={16} />
-                            {error}
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Category *
-                        </label>
-                        <select
-                            name="category"
-                            required
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                        >
-                            <option value="">Select category...</option>
-                            <option value="Transport">Transport</option>
-                            <option value="Materials">Materials</option>
-                            <option value="Labor">Labor</option>
-                            <option value="Equipment">Equipment</option>
-                            <option value="Maintenance">Maintenance</option>
-                            <option value="Administrative">Administrative</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description *
-                        </label>
-                        <input
-                            type="text"
-                            name="description"
-                            required
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                            placeholder="Brief description of the expense"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Amount (₦) *
-                            </label>
-                            <input
-                                type="number"
-                                name="amount"
-                                required
-                                min={1}
-                                step={0.01}
-                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                                placeholder="0.00"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Date
-                            </label>
-                            <input
-                                type="date"
-                                name="date"
-                                defaultValue={new Date().toISOString().split('T')[0]}
-                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Invoice/Receipt Number
-                        </label>
-                        <input
-                            type="text"
-                            name="invoiceNumber"
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                            placeholder="Optional"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Client (if applicable)
-                        </label>
-                        <select
-                            name="clientId"
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                        >
-                            <option value="">General expense (no client)</option>
-                            {clients.map(client => (
-                                <option key={client.id} value={client.id}>
-                                    {client.code} - {client.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {category === 'Transport' && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Truck
-                            </label>
-                            <select
-                                name="truckId"
-                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                            >
-                                <option value="">Select truck...</option>
-                                {trucks.map(truck => (
-                                    <option key={truck.id} value={truck.id}>
-                                        {truck.plateNumber}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Notes
-                        </label>
-                        <textarea
-                            name="notes"
-                            rows={2}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 resize-none"
-                            placeholder="Additional notes..."
-                        />
-                    </div>
-                </form>
-
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50/50">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-5 py-2.5 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={isPending}
-                        onClick={(e) => {
-                            const form = document.querySelector('form')
-                            if (form) form.requestSubmit()
-                        }}
-                        className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all disabled:opacity-50 flex items-center gap-2"
-                    >
-                        {isPending && <Loader2 size={16} className="animate-spin" />}
-                        Record Expense
                     </button>
                 </div>
             </div>

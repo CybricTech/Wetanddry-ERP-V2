@@ -491,35 +491,54 @@ function NewOrderWizard({
     }
 
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b">
-                    <div>
-                        <h2 className="text-lg font-semibold">
-                            {step === 1 ? 'Create New Order' : 'Add Line Items'}
-                        </h2>
-                        <p className="text-sm text-gray-500">
-                            {step === 1 ? 'Enter order details' : 'Add products to the order'}
-                        </p>
+                <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <ShoppingCart className="w-24 h-24" />
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                        <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center justify-between relative z-10">
+                        <div>
+                            <h2 className="text-xl font-bold tracking-tight">
+                                {step === 1 ? 'Create New Order' : 'Add Line Items'}
+                            </h2>
+                            <p className="text-emerald-100 text-sm mt-0.5">
+                                {step === 1 ? 'Fill in order details below' : 'Add products to the order'}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {/* Step indicator */}
+                            <div className="flex items-center gap-1.5 bg-white/15 rounded-xl px-3 py-1.5 text-sm font-medium">
+                                <span className={step === 1 ? 'text-white' : 'text-white/50'}>1. Details</span>
+                                <ChevronRight className="w-3 h-3 text-white/50" />
+                                <span className={step === 2 ? 'text-white' : 'text-white/50'}>2. Items</span>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="p-2 hover:bg-white/20 rounded-xl transition-all"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                <div className="p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
                     {error && (
-                        <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
+                        <div className="flex items-center gap-2 p-3 bg-red-50 text-red-600 rounded-xl text-sm border border-red-100">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            {error}
+                        </div>
                     )}
 
                     {step === 1 ? (
                         <>
                             {/* Client Search */}
                             <div className="relative">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Client *</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Client <span className="text-red-500">*</span></label>
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input
                                         type="text"
                                         placeholder="Search clients by name or code..."
@@ -530,11 +549,11 @@ function NewOrderWizard({
                                             setShowClientDropdown(true)
                                         }}
                                         onFocus={() => setShowClientDropdown(true)}
-                                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
                                     />
                                 </div>
                                 {showClientDropdown && !clientId && (
-                                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                    <div className="absolute z-10 w-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                                         {filteredClients.map(c => (
                                             <button
                                                 key={c.id}
@@ -544,14 +563,14 @@ function NewOrderWizard({
                                                     setClientSearch('')
                                                     setShowClientDropdown(false)
                                                 }}
-                                                className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                                                className="w-full px-4 py-2.5 text-left hover:bg-emerald-50 flex items-center gap-3 transition-colors"
                                             >
-                                                <Building2 className="w-4 h-4 text-gray-400" />
-                                                <span>{c.code} - {c.name}</span>
+                                                <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
+                                                <span className="text-sm text-gray-700">{c.code} - {c.name}</span>
                                             </button>
                                         ))}
                                         {filteredClients.length === 0 && (
-                                            <div className="px-4 py-2 text-gray-500 text-sm">No clients found</div>
+                                            <div className="px-4 py-3 text-gray-400 text-sm text-center">No clients found</div>
                                         )}
                                     </div>
                                 )}
@@ -560,88 +579,84 @@ function NewOrderWizard({
                             {/* Required Date & Threshold */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Required Date</label>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Required Date</label>
                                     <input
                                         type="date"
                                         value={requiredDate}
                                         onChange={(e) => setRequiredDate(e.target.value)}
-                                        className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-gray-700"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Activation Threshold (%)</label>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Activation Threshold (%)</label>
                                     <input
                                         type="number"
                                         value={activationThreshold}
                                         onChange={(e) => setActivationThreshold(e.target.value)}
                                         min="0"
                                         max="100"
-                                        className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
                                     />
-                                    <p className="text-xs text-gray-500 mt-1">Payment % required to activate</p>
+                                    <p className="text-xs text-gray-400 mt-1.5">Payment % required to activate</p>
                                 </div>
                             </div>
 
                             {/* Delivery Address */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Address</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Delivery Address</label>
                                 <input
                                     type="text"
                                     placeholder="Enter delivery address"
                                     value={deliveryAddress}
                                     onChange={(e) => setDeliveryAddress(e.target.value)}
-                                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
                                 />
                             </div>
 
                             {/* Notes */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
                                 <textarea
-                                    placeholder="Optional notes"
+                                    placeholder="Optional notes..."
                                     value={notes}
                                     onChange={(e) => setNotes(e.target.value)}
                                     rows={2}
-                                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all resize-none"
                                 />
                             </div>
                         </>
                     ) : (
                         <>
-                            <p className="text-sm text-gray-600">
-                                Add products to the order. Click &quot;Add&quot; to save each item.
-                            </p>
-
                             {/* Added Items */}
                             {lineItems.length > 0 && (
-                                <div className="border rounded-lg overflow-hidden">
-                                    <div className="bg-emerald-50 px-3 py-2 flex items-center gap-2 text-emerald-700 text-sm font-medium">
+                                <div className="rounded-xl overflow-hidden border border-emerald-100">
+                                    <div className="bg-emerald-50 px-4 py-2.5 flex items-center gap-2 text-emerald-700 text-sm font-semibold">
                                         <Check className="w-4 h-4" />
                                         Added Items ({lineItems.length})
                                     </div>
                                     <table className="w-full text-sm">
-                                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                                        <thead className="bg-gray-50 border-b border-gray-100">
                                             <tr>
-                                                <th className="px-3 py-2 text-left">Product</th>
-                                                <th className="px-3 py-2 text-left">Qty (m³)</th>
-                                                <th className="px-3 py-2 text-left">Price/m³</th>
-                                                <th className="px-3 py-2 text-left">Total</th>
+                                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
+                                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty (m³)</th>
+                                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Price/m³</th>
+                                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y">
+                                        <tbody className="divide-y divide-gray-50">
                                             {lineItems.map((item, idx) => (
-                                                <tr key={idx}>
-                                                    <td className="px-3 py-2">{item.productName}</td>
-                                                    <td className="px-3 py-2">{item.cubicMeters}</td>
-                                                    <td className="px-3 py-2">₦{item.unitPrice.toLocaleString()}</td>
-                                                    <td className="px-3 py-2">₦{item.lineTotal.toLocaleString()}</td>
+                                                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                                    <td className="px-4 py-3 font-medium text-gray-800">{item.productName}</td>
+                                                    <td className="px-4 py-3 text-gray-600">{item.cubicMeters}</td>
+                                                    <td className="px-4 py-3 text-gray-600">₦{item.unitPrice.toLocaleString()}</td>
+                                                    <td className="px-4 py-3 font-semibold text-gray-900">₦{item.lineTotal.toLocaleString()}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
-                                        <tfoot className="bg-emerald-50">
+                                        <tfoot className="bg-emerald-50 border-t border-emerald-100">
                                             <tr>
-                                                <td colSpan={3} className="px-3 py-2 text-right font-medium">Order Total:</td>
-                                                <td className="px-3 py-2 font-bold">₦{orderTotal.toLocaleString()}</td>
+                                                <td colSpan={3} className="px-4 py-3 text-right font-semibold text-emerald-800">Order Total:</td>
+                                                <td className="px-4 py-3 font-bold text-emerald-900">₦{orderTotal.toLocaleString()}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -649,74 +664,75 @@ function NewOrderWizard({
                             )}
 
                             {/* Add Item Form */}
-                            <div className="flex gap-2 items-end">
-                                <div className="flex-1">
-                                    <label className="block text-sm text-gray-600 mb-1">Product</label>
-                                    <select
-                                        value={newItem.recipeId}
-                                        onChange={(e) => setNewItem({ ...newItem, recipeId: e.target.value })}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-4">
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Add Product</p>
+                                <div className="grid grid-cols-1 gap-3">
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1.5">Product</label>
+                                        <select
+                                            value={newItem.recipeId}
+                                            onChange={(e) => setNewItem({ ...newItem, recipeId: e.target.value })}
+                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm"
+                                        >
+                                            <option value="">Select product...</option>
+                                            {recipes.map(r => (
+                                                <option key={r.id} value={r.id}>{r.productCode} - {r.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1.5">Qty (m³)</label>
+                                            <input
+                                                type="number"
+                                                value={newItem.cubicMeters}
+                                                onChange={(e) => setNewItem({ ...newItem, cubicMeters: e.target.value })}
+                                                step="0.5"
+                                                min="0"
+                                                placeholder="0.0"
+                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1.5">Price/m³ (₦)</label>
+                                            <input
+                                                type="number"
+                                                value={newItem.unitPrice}
+                                                onChange={(e) => setNewItem({ ...newItem, unitPrice: e.target.value })}
+                                                step="100"
+                                                min="0"
+                                                placeholder="0"
+                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleCreateOrderAndAddItem}
+                                        disabled={isPending}
+                                        className="w-full py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
                                     >
-                                        <option value="">Select...</option>
-                                        {recipes.map(r => (
-                                            <option key={r.id} value={r.id}>{r.productCode} - {r.name}</option>
-                                        ))}
-                                    </select>
+                                        <Plus className="w-4 h-4" />
+                                        {isPending ? 'Adding...' : 'Add Item'}
+                                    </button>
                                 </div>
-                                <div className="w-20">
-                                    <label className="block text-sm text-gray-600 mb-1">Qty (m³)</label>
-                                    <input
-                                        type="number"
-                                        value={newItem.cubicMeters}
-                                        onChange={(e) => setNewItem({ ...newItem, cubicMeters: e.target.value })}
-                                        step="0.5"
-                                        min="0"
-                                        className="w-full border rounded-lg px-2 py-2 text-sm"
-                                    />
-                                </div>
-                                <div className="w-24">
-                                    <label className="block text-sm text-gray-600 mb-1">Price/m³</label>
-                                    <input
-                                        type="number"
-                                        value={newItem.unitPrice}
-                                        onChange={(e) => setNewItem({ ...newItem, unitPrice: e.target.value })}
-                                        step="100"
-                                        min="0"
-                                        className="w-full border rounded-lg px-2 py-2 text-sm"
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleCreateOrderAndAddItem}
-                                    disabled={isPending}
-                                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm"
-                                >
-                                    Add
-                                </button>
                             </div>
-
-                            <button
-                                type="button"
-                                className="text-emerald-600 text-sm hover:underline"
-                            >
-                                + Add Another Item
-                            </button>
                         </>
                     )}
                 </div>
 
                 {/* Footer */}
-                <div className="flex justify-end gap-3 p-4 border-t">
+                <div className="flex justify-end gap-3 p-5 border-t border-gray-100 bg-gray-50/50">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                        className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-100 font-medium transition-all"
                     >
                         Cancel
                     </button>
                     {step === 1 ? (
                         <button
                             onClick={handleNextStep}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 inline-flex items-center gap-2"
+                            className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold inline-flex items-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
                         >
                             Next: Add Items <ArrowRight className="w-4 h-4" />
                         </button>
@@ -724,9 +740,9 @@ function NewOrderWizard({
                         <button
                             onClick={handleDone}
                             disabled={isPending || lineItems.length === 0}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-2"
+                            className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-semibold inline-flex items-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
                         >
-                            <Check className="w-4 h-4" /> Done
+                            <Check className="w-4 h-4" /> Complete Order
                         </button>
                     )}
                 </div>

@@ -1,14 +1,15 @@
-import { getFuelLogs, getFuelDeposits, logFuel } from '@/lib/actions/fuel';
+import { getFuelLogs, getFuelDeposits, logFuel, getEquipment } from '@/lib/actions/fuel';
 import { getTrucks } from '@/lib/actions/trucks';
 import { auth } from '@/auth';
 import { hasPermission } from '@/lib/permissions';
 import FuelClient from '@/components/fuel/FuelClient';
 
 export default async function FuelPage() {
-    const [logs, deposits, trucks, session] = await Promise.all([
+    const [logs, deposits, trucks, equipment, session] = await Promise.all([
         getFuelLogs(),
         getFuelDeposits(),
         getTrucks(),
+        getEquipment(),
         auth()
     ]);
 
@@ -20,6 +21,7 @@ export default async function FuelPage() {
             logs={JSON.parse(JSON.stringify(logs))}
             deposits={JSON.parse(JSON.stringify(deposits))}
             trucks={JSON.parse(JSON.stringify(trucks))}
+            equipment={JSON.parse(JSON.stringify(equipment))}
             canLogFuel={canLogFuel}
             canManageFuel={canManageFuel}
             logFuelAction={logFuel}

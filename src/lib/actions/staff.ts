@@ -251,6 +251,13 @@ export async function deleteStaffDocument(documentId: string) {
             where: { id: documentId }
         })
 
+        // Clean up file from Cloudinary (non-fatal if it fails)
+        if (doc.cloudinaryPublicId) {
+            await deleteFromCloudinary(doc.cloudinaryPublicId).catch(() => {
+                console.warn('Failed to delete Cloudinary file:', doc.cloudinaryPublicId)
+            })
+        }
+
         revalidatePath(`/staff/${doc.staffId}`)
         return { success: true, data: doc }
     } catch (error) {

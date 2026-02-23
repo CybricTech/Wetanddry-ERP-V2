@@ -67,7 +67,7 @@ interface TruckData {
         date: Date
         liters: number
         cost: number
-        mileage: number
+        mileage: number | null
         efficiency: number | null
     }[]
     documents: {

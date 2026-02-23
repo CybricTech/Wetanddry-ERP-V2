@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, Upload, Trash2, Loader2, Download, Eye } from 'lucide-react'
+import { FileText, Upload, Trash2, Loader2, Download, Eye, AlertCircle } from 'lucide-react'
 import { uploadStaffDocument, deleteStaffDocument } from '@/lib/actions/staff'
 import { useRouter } from 'next/navigation'
 
@@ -16,18 +16,19 @@ interface StaffDocument {
 interface StaffDocumentsProps {
     staffId: string
     documents: StaffDocument[]
+    canManageStaff: boolean
 }
 
 import DeleteConfirmationModal from './DeleteConfirmationModal'
 
-export default function StaffDocuments({ staffId, documents }: StaffDocumentsProps) {
-    console.log('StaffDocuments rendered with:', documents);
+export default function StaffDocuments({ staffId, documents, canManageStaff }: StaffDocumentsProps) {
     const router = useRouter()
     const [isUploading, setIsUploading] = useState(false)
     const [isDeleting, setIsDeleting] = useState<string | null>(null)
     const [showUploadForm, setShowUploadForm] = useState(false)
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
+    const [uploadError, setUploadError] = useState<string | null>(null)
 
     // Upload Form State
     const [file, setFile] = useState<File | null>(null)
@@ -40,6 +41,7 @@ export default function StaffDocuments({ staffId, documents }: StaffDocumentsPro
         if (!file || !docName) return
 
         setIsUploading(true)
+        setUploadError(null)
         const formData = new FormData()
         formData.append('file', file)
         formData.append('staffId', staffId)
@@ -58,7 +60,7 @@ export default function StaffDocuments({ staffId, documents }: StaffDocumentsPro
             setExpiryDate('')
             router.refresh()
         } else {
-            alert('Failed to upload document')
+            setUploadError(result.error || 'Failed to upload document')
         }
     }
 
@@ -78,8 +80,6 @@ export default function StaffDocuments({ staffId, documents }: StaffDocumentsPro
 
         if (result.success) {
             router.refresh()
-        } else {
-            alert('Failed to delete document')
         }
     }
 
@@ -98,17 +98,25 @@ export default function StaffDocuments({ staffId, documents }: StaffDocumentsPro
             <div className="bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-xl font-semibold text-gray-900">Documents</h2>
-                    <button
-                        onClick={() => setShowUploadForm(!showUploadForm)}
-                        className="inline-flex items-center px-4 py-2 bg-gray-50 text-gray-700 rounded-xl hover:bg-gray-100 font-medium transition-colors border border-gray-200"
-                    >
-                        <Upload size={18} className="mr-2" />
-                        {showUploadForm ? 'Cancel Upload' : 'Upload Document'}
-                    </button>
+                    {canManageStaff && (
+                        <button
+                            onClick={() => { setShowUploadForm(!showUploadForm); setUploadError(null) }}
+                            className="inline-flex items-center px-4 py-2 bg-gray-50 text-gray-700 rounded-xl hover:bg-gray-100 font-medium transition-colors border border-gray-200"
+                        >
+                            <Upload size={18} className="mr-2" />
+                            {showUploadForm ? 'Cancel Upload' : 'Upload Document'}
+                        </button>
+                    )}
                 </div>
 
-                {showUploadForm && (
+                {showUploadForm && canManageStaff && (
                     <form onSubmit={handleUpload} className="mb-8 bg-gray-50 p-6 rounded-xl border border-gray-200 animate-in fade-in slide-in-from-top-4">
+                        {uploadError && (
+                            <div className="mb-4 flex items-center gap-2 bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100">
+                                <AlertCircle size={16} className="shrink-0" />
+                                {uploadError}
+                            </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Document Name</label>
@@ -215,14 +223,16 @@ export default function StaffDocuments({ staffId, documents }: StaffDocumentsPro
                                     >
                                         <Download size={18} />
                                     </a>
-                                    <button
-                                        onClick={() => confirmDelete(doc.id)}
-                                        disabled={isDeleting === doc.id}
-                                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Delete"
-                                    >
-                                        {isDeleting === doc.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-                                    </button>
+                                    {canManageStaff && (
+                                        <button
+                                            onClick={() => confirmDelete(doc.id)}
+                                            disabled={isDeleting === doc.id}
+                                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Delete"
+                                        >
+                                            {isDeleting === doc.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))
