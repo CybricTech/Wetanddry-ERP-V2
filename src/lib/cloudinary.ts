@@ -24,6 +24,7 @@ export async function uploadToCloudinary(file: File, folder: string, resourceTyp
             {
                 folder,
                 resource_type: resourceType,
+                access_mode: 'public',
             },
             (error, result) => {
                 if (error) {
@@ -33,6 +34,15 @@ export async function uploadToCloudinary(file: File, folder: string, resourceTyp
                 resolve(result as any);
             }
         ).end(buffer);
+    });
+}
+
+export function getSignedUrl(publicId: string, resourceType: 'image' | 'raw' | 'video' = 'raw') {
+    return cloudinary.url(publicId, {
+        secure: true,
+        resource_type: resourceType,
+        sign_url: true,
+        type: 'upload',
     });
 }
 

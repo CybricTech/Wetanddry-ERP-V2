@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
-import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
+import { uploadToCloudinary, deleteFromCloudinary, getSignedUrl } from '@/lib/cloudinary'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
 
@@ -66,6 +66,11 @@ export async function getStaffById(id: string) {
         })
 
         if (!staff) return { success: false, error: 'Staff not found' }
+
+        staff.documents = staff.documents.map(doc => ({
+            ...doc,
+            url: getSignedUrl(doc.cloudinaryPublicId),
+        }))
 
         return { success: true, data: staff }
     } catch (error) {

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
-import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
+import { uploadToCloudinary, deleteFromCloudinary, getSignedUrl } from '@/lib/cloudinary'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
 import {
@@ -61,7 +61,7 @@ export async function getTrucks() {
 }
 
 export async function getTruck(id: string) {
-    return await prisma.truck.findUnique({
+    const truck = await prisma.truck.findUnique({
         where: { id },
         include: {
             maintenanceRecords: {
@@ -82,6 +82,15 @@ export async function getTruck(id: string) {
             }
         },
     })
+
+    if (truck) {
+        truck.documents = truck.documents.map(doc => ({
+            ...doc,
+            url: getSignedUrl(doc.cloudinaryPublicId),
+        }))
+    }
+
+    return truck
 }
 
 export async function updateTruck(id: string, formData: FormData) {
