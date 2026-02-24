@@ -92,7 +92,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
     const [showScheduleModal, setShowScheduleModal] = useState(false)
     const [showPartModal, setShowPartModal] = useState(false)
     const [showDocumentModal, setShowDocumentModal] = useState(false)
-    const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null)
+    const [viewingDocument, setViewingDocument] = useState<{ id: string; name: string } | null>(null)
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
     const { can: clientCan } = usePermissions()
 
@@ -681,7 +681,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                                         )}
 
                                         <button
-                                            onClick={() => setViewingDocument({ url: doc.url, name: doc.name })}
+                                            onClick={() => setViewingDocument({ id: doc.id, name: doc.name })}
                                             className="w-full text-center py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
                                         >
                                             <Eye size={16} />
@@ -725,7 +725,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
             )}
             {viewingDocument && (
                 <DocumentViewerModal
-                    url={viewingDocument.url}
+                    documentId={viewingDocument.id}
                     name={viewingDocument.name}
                     onClose={() => setViewingDocument(null)}
                 />

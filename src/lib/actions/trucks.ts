@@ -83,13 +83,6 @@ export async function getTruck(id: string) {
         },
     })
 
-    if (truck) {
-        truck.documents = truck.documents.map(doc => ({
-            ...doc,
-            url: getSignedUrl(doc.cloudinaryPublicId, detectResourceType(doc.url)),
-        }))
-    }
-
     return truck
 }
 

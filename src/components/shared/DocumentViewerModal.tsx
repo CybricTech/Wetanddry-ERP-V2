@@ -4,31 +4,24 @@ import { useState } from 'react'
 import { X, Download, ExternalLink, FileText, Loader2 } from 'lucide-react'
 
 interface DocumentViewerModalProps {
-    url: string
+    documentId: string
     name: string
     onClose: () => void
 }
 
-function getFileType(url: string, name: string): 'image' | 'pdf' | 'other' {
-    const combined = `${url} ${name}`.toLowerCase()
-    if (/\.(png|jpg|jpeg|gif|webp)/i.test(combined)) {
-        return 'image'
-    }
-    if (/\.pdf/i.test(combined)) {
-        return 'pdf'
-    }
-    // Default to PDF for Cloudinary raw uploads (most documents are PDFs)
-    if (url.includes('res.cloudinary.com')) {
-        return 'pdf'
-    }
-    return 'other'
+function getFileType(name: string): 'image' | 'pdf' | 'other' {
+    const lower = name.toLowerCase()
+    if (/\.(png|jpg|jpeg|gif|webp)$/.test(lower)) return 'image'
+    if (/\.pdf$/.test(lower)) return 'pdf'
+    return 'pdf' // default to pdf for documents
 }
 
-export default function DocumentViewerModal({ url, name, onClose }: DocumentViewerModalProps) {
+export default function DocumentViewerModal({ documentId, name, onClose }: DocumentViewerModalProps) {
     const [isLoading, setIsLoading] = useState(true)
     const [hasError, setHasError] = useState(false)
 
-    const fileType = getFileType(url, name)
+    const proxyUrl = `/api/documents/${documentId}`
+    const fileType = getFileType(name)
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -46,15 +39,15 @@ export default function DocumentViewerModal({ url, name, onClose }: DocumentView
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <a
-                            href={url}
-                            download
+                            href={proxyUrl}
+                            download={name}
                             className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Download"
                         >
                             <Download size={18} />
                         </a>
                         <a
-                            href={url}
+                            href={proxyUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -85,7 +78,7 @@ export default function DocumentViewerModal({ url, name, onClose }: DocumentView
                             <p className="font-medium text-gray-700 mb-1">Unable to preview this document</p>
                             <p className="text-sm mb-4">The file format may not support inline preview.</p>
                             <a
-                                href={url}
+                                href={proxyUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm font-medium transition-colors"
@@ -97,7 +90,7 @@ export default function DocumentViewerModal({ url, name, onClose }: DocumentView
 
                     {fileType === 'image' && !hasError && (
                         <img
-                            src={url}
+                            src={proxyUrl}
                             alt={name}
                             className={`max-w-full mx-auto rounded-lg ${isLoading ? 'hidden' : ''}`}
                             onLoad={() => setIsLoading(false)}
@@ -107,7 +100,7 @@ export default function DocumentViewerModal({ url, name, onClose }: DocumentView
 
                     {(fileType === 'pdf' || fileType === 'other') && !hasError && (
                         <iframe
-                            src={url}
+                            src={proxyUrl}
                             className={`w-full h-[70vh] rounded-lg border border-gray-200 ${isLoading ? 'hidden' : ''}`}
                             onLoad={() => setIsLoading(false)}
                             onError={() => { setIsLoading(false); setHasError(true) }}

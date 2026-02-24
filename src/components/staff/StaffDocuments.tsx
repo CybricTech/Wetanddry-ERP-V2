@@ -30,7 +30,7 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
     const [uploadError, setUploadError] = useState<string | null>(null)
-    const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null)
+    const [viewingDocument, setViewingDocument] = useState<{ id: string; name: string } | null>(null)
 
     // Upload Form State
     const [file, setFile] = useState<File | null>(null)
@@ -193,7 +193,7 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
                                     </div>
                                     <div>
                                         <button
-                                            onClick={() => setViewingDocument({ url: doc.url, name: doc.name })}
+                                            onClick={() => setViewingDocument({ id: doc.id, name: doc.name })}
                                             className="font-medium text-gray-900 hover:text-blue-600 hover:underline transition-colors text-left"
                                         >
                                             {doc.name}
@@ -206,16 +206,15 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button
-                                        onClick={() => setViewingDocument({ url: doc.url, name: doc.name })}
+                                        onClick={() => setViewingDocument({ id: doc.id, name: doc.name })}
                                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                         title="View"
                                     >
                                         <Eye size={18} />
                                     </button>
                                     <a
-                                        href={doc.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
+                                        href={`/api/documents/${doc.id}`}
+                                        download={doc.name}
                                         className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                         title="Download"
                                     >
@@ -240,7 +239,7 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
 
             {viewingDocument && (
                 <DocumentViewerModal
-                    url={viewingDocument.url}
+                    documentId={viewingDocument.id}
                     name={viewingDocument.name}
                     onClose={() => setViewingDocument(null)}
                 />
