@@ -9,12 +9,44 @@ interface DocumentViewerModalProps {
     onClose: () => void
 }
 
+function getFileType(url: string, name: string): 'image' | 'pdf' | 'other' {
+    const combined = `${url} ${name}`.toLowerCase()
+    if (/\.(png|jpg|jpeg|gif|webp)/i.test(combined) || url.includes('/image/upload/')) {
+        return 'image'
+    }
+    if (/\.pdf/i.test(combined) || url.includes('/raw/upload/')) {
+        return 'pdf'
+    }
+    return 'other'
+}
+
+function getViewableUrl(url: string, fileType: 'image' | 'pdf' | 'other'): string {
+    // For Cloudinary URLs, transform to allow inline viewing
+    if (url.includes('res.cloudinary.com')) {
+        if (fileType === 'image') {
+            // Ensure image delivery format
+            return url.replace('/raw/upload/', '/image/upload/')
+        }
+        if (fileType === 'pdf') {
+            // For PDFs on Cloudinary: use fl_attachment:false to allow inline display
+            // and switch to image/upload with page delivery for PDF rendering
+            if (url.includes('/raw/upload/')) {
+                return url.replace('/raw/upload/', '/image/upload/')
+            }
+        }
+    }
+    return url
+}
+
 export default function DocumentViewerModal({ url, name, onClose }: DocumentViewerModalProps) {
     const [isLoading, setIsLoading] = useState(true)
     const [hasError, setHasError] = useState(false)
 
-    const isImage = /\.(png|jpg|jpeg|gif|webp)(\?|$)/i.test(url)
-    const isPdf = /\.(pdf)(\?|$)/i.test(url)
+    const fileType = getFileType(url, name)
+    const viewUrl = getViewableUrl(url, fileType)
+
+    // For PDFs, use Google Docs viewer as the most reliable cross-browser approach
+    const pdfViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -81,9 +113,9 @@ export default function DocumentViewerModal({ url, name, onClose }: DocumentView
                         </div>
                     )}
 
-                    {isImage && (
+                    {fileType === 'image' && (
                         <img
-                            src={url}
+                            src={viewUrl}
                             alt={name}
                             className={`max-w-full mx-auto rounded-lg ${isLoading ? 'hidden' : ''}`}
                             onLoad={() => setIsLoading(false)}
@@ -91,9 +123,9 @@ export default function DocumentViewerModal({ url, name, onClose }: DocumentView
                         />
                     )}
 
-                    {isPdf && !hasError && (
+                    {fileType === 'pdf' && !hasError && (
                         <iframe
-                            src={`${url}#toolbar=1&navpanes=0`}
+                            src={pdfViewerUrl}
                             className={`w-full h-[70vh] rounded-lg border border-gray-200 ${isLoading ? 'hidden' : ''}`}
                             onLoad={() => setIsLoading(false)}
                             onError={() => { setIsLoading(false); setHasError(true) }}
@@ -101,9 +133,9 @@ export default function DocumentViewerModal({ url, name, onClose }: DocumentView
                         />
                     )}
 
-                    {!isImage && !isPdf && !hasError && (
+                    {fileType === 'other' && !hasError && (
                         <iframe
-                            src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
+                            src={pdfViewerUrl}
                             className={`w-full h-[70vh] rounded-lg border border-gray-200 ${isLoading ? 'hidden' : ''}`}
                             onLoad={() => setIsLoading(false)}
                             onError={() => { setIsLoading(false); setHasError(true) }}
