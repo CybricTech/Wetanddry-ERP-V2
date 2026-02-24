@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { FileText, Upload, Trash2, Loader2, Download, Eye, AlertCircle } from 'lucide-react'
 import { uploadStaffDocument, deleteStaffDocument } from '@/lib/actions/staff'
 import { useRouter } from 'next/navigation'
+import DocumentViewerModal from '@/components/shared/DocumentViewerModal'
 
 interface StaffDocument {
     id: string
@@ -29,6 +30,7 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
     const [uploadError, setUploadError] = useState<string | null>(null)
+    const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null)
 
     // Upload Form State
     const [file, setFile] = useState<File | null>(null)
@@ -190,14 +192,12 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
                                         <FileText size={20} />
                                     </div>
                                     <div>
-                                        <a
-                                            href={doc.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="font-medium text-gray-900 hover:text-blue-600 hover:underline transition-colors"
+                                        <button
+                                            onClick={() => setViewingDocument({ url: doc.url, name: doc.name })}
+                                            className="font-medium text-gray-900 hover:text-blue-600 hover:underline transition-colors text-left"
                                         >
                                             {doc.name}
-                                        </a>
+                                        </button>
                                         <div className="flex items-center gap-2 text-xs text-gray-500">
                                             <span className="bg-gray-100 px-2 py-0.5 rounded-full">{doc.type}</span>
                                             <span>• {new Date(doc.createdAt).toLocaleDateString()}</span>
@@ -205,15 +205,13 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <a
-                                        href={`https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}&embedded=true`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
+                                    <button
+                                        onClick={() => setViewingDocument({ url: doc.url, name: doc.name })}
                                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                         title="View"
                                     >
                                         <Eye size={18} />
-                                    </a>
+                                    </button>
                                     <a
                                         href={doc.url}
                                         target="_blank"
@@ -239,6 +237,14 @@ export default function StaffDocuments({ staffId, documents, canManageStaff }: S
                     )}
                 </div>
             </div>
+
+            {viewingDocument && (
+                <DocumentViewerModal
+                    url={viewingDocument.url}
+                    name={viewingDocument.name}
+                    onClose={() => setViewingDocument(null)}
+                />
+            )}
         </>
     )
 }

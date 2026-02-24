@@ -12,8 +12,9 @@ import AddMaintenanceModal from './AddMaintenanceModal'
 import ScheduleMaintenanceModal from './ScheduleMaintenanceModal'
 import AddPartModal from './AddPartModal'
 import AddDocumentModal from './AddDocumentModal'
+import DocumentViewerModal from '@/components/shared/DocumentViewerModal'
 import { deleteTruckDocument } from '@/lib/actions/trucks'
-import { FileText, Trash2 } from 'lucide-react'
+import { FileText, Trash2, Eye } from 'lucide-react'
 import { usePermissions } from '@/hooks/use-permissions'
 import { hasPermission, Permission } from '@/lib/permissions'
 
@@ -91,6 +92,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
     const [showScheduleModal, setShowScheduleModal] = useState(false)
     const [showPartModal, setShowPartModal] = useState(false)
     const [showDocumentModal, setShowDocumentModal] = useState(false)
+    const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null)
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
     const { can: clientCan } = usePermissions()
 
@@ -678,14 +680,13 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                                             </div>
                                         )}
 
-                                        <a
-                                            href={doc.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="block w-full text-center py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition-colors"
+                                        <button
+                                            onClick={() => setViewingDocument({ url: doc.url, name: doc.name })}
+                                            className="w-full text-center py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
                                         >
+                                            <Eye size={16} />
                                             View Document
-                                        </a>
+                                        </button>
                                     </div>
                                 )
                             })
@@ -720,6 +721,13 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                 <AddDocumentModal
                     truckId={truck.id}
                     onClose={() => setShowDocumentModal(false)}
+                />
+            )}
+            {viewingDocument && (
+                <DocumentViewerModal
+                    url={viewingDocument.url}
+                    name={viewingDocument.name}
+                    onClose={() => setViewingDocument(null)}
                 />
             )}
         </div>
