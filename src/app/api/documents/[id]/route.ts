@@ -43,99 +43,78 @@ export async function GET(
     }
 
     const resourceType = doc.url.includes('/raw/upload/') ? 'raw' : 'image'
-    const formatMatch = doc.url.match(/\.(\w+)(?:\?|$)/)
-    const format = formatMatch ? formatMatch[1] : 'pdf'
 
-    const attempts: { method: string; url: string; status: number }[] = []
-
-    // Helper to try fetching a URL
-    async function tryFetch(url: string, method: string): Promise<Response | null> {
-        try {
-            const resp = await fetch(url)
-            attempts.push({ method, url, status: resp.status })
-            if (resp.ok) return resp
-        } catch {
-            attempts.push({ method, url, status: 0 })
-        }
-        return null
-    }
-
-    // Helper to return successful response
-    function serveResponse(resp: Response, buffer: ArrayBuffer) {
-        const contentType = resp.headers.get('content-type') || 'application/octet-stream'
-        return new NextResponse(buffer, {
-            headers: {
-                'Content-Type': contentType,
-                'Content-Disposition': `inline; filename="${doc!.name}"`,
-                'Cache-Control': 'private, max-age=3600',
-            },
-        })
-    }
-
-    // Approach 1: private_download_url (API endpoint, not CDN)
-    for (const rt of [resourceType, resourceType === 'image' ? 'raw' : 'image'] as const) {
-        const downloadUrl = cloudinary.utils.private_download_url(
-            doc.cloudinaryPublicId, format, { resource_type: rt }
-        )
-        const resp = await tryFetch(downloadUrl, `private_download-${rt}`)
-        if (resp) return serveResponse(resp, await resp.arrayBuffer())
-    }
-
-    // Approach 2: Signed URL with long signature (SHA-256)
-    for (const rt of [resourceType, resourceType === 'image' ? 'raw' : 'image'] as const) {
-        const signedUrl = cloudinary.url(doc.cloudinaryPublicId, {
-            secure: true,
-            resource_type: rt,
-            sign_url: true,
-            type: 'upload',
-            long_url_signature: true,
-        })
-        const resp = await tryFetch(signedUrl, `signed-long-${rt}`)
-        if (resp) return serveResponse(resp, await resp.arrayBuffer())
-    }
-
-    // Approach 3: Use Admin API to get resource info, then try its secure_url
-    for (const rt of [resourceType, resourceType === 'image' ? 'raw' : 'image'] as const) {
+    // If debug mode, return the full resource metadata from Admin API
+    if (debug) {
         try {
             const resource = await cloudinary.api.resource(doc.cloudinaryPublicId, {
-                resource_type: rt,
+                resource_type: resourceType,
             })
-            if (resource?.secure_url) {
-                const resp = await tryFetch(resource.secure_url, `admin-api-url-${rt}`)
-                if (resp) return serveResponse(resp, await resp.arrayBuffer())
-            }
-        } catch {
-            attempts.push({ method: `admin-api-${rt}`, url: 'API call failed', status: 0 })
+            return NextResponse.json({
+                storedUrl: doc.url,
+                publicId: doc.cloudinaryPublicId,
+                cloudName,
+                resourceMetadata: {
+                    secure_url: resource.secure_url,
+                    url: resource.url,
+                    format: resource.format,
+                    resource_type: resource.resource_type,
+                    type: resource.type,
+                    access_mode: resource.access_mode,
+                    access_control: resource.access_control,
+                    bytes: resource.bytes,
+                    created_at: resource.created_at,
+                },
+            })
+        } catch (error: any) {
+            return NextResponse.json({
+                error: 'Admin API failed',
+                message: error?.message || String(error),
+                storedUrl: doc.url,
+                publicId: doc.cloudinaryPublicId,
+                cloudName,
+            }, { status: 502 })
         }
     }
 
-    // Approach 4: Direct Cloudinary API download with Basic Auth header
-    const basicAuth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64')
-    for (const rt of [resourceType, resourceType === 'image' ? 'raw' : 'image'] as const) {
-        const apiUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${rt}/download`
-        const timestamp = Math.floor(Date.now() / 1000)
-        const paramsToSign = `public_id=${doc.cloudinaryPublicId}&timestamp=${timestamp}`
-        const signature = cloudinary.utils.api_sign_request(
-            { public_id: doc.cloudinaryPublicId, timestamp },
-            apiSecret!
-        )
+    // Non-debug: try to fetch the document
+    // First try the stored URL directly
+    try {
+        const resp = await fetch(doc.url)
+        if (resp.ok) {
+            const contentType = resp.headers.get('content-type') || 'application/octet-stream'
+            const buffer = await resp.arrayBuffer()
+            return new NextResponse(buffer, {
+                headers: {
+                    'Content-Type': contentType,
+                    'Content-Disposition': `inline; filename="${doc.name}"`,
+                    'Cache-Control': 'private, max-age=3600',
+                },
+            })
+        }
+    } catch {}
 
-        const downloadApiUrl = `${apiUrl}?public_id=${encodeURIComponent(doc.cloudinaryPublicId)}&timestamp=${timestamp}&signature=${signature}&api_key=${apiKey}&format=${format}`
-        const resp = await tryFetch(downloadApiUrl, `manual-api-download-${rt}`)
-        if (resp) return serveResponse(resp, await resp.arrayBuffer())
-    }
-
-    if (debug) {
-        return NextResponse.json({
-            error: 'All fetch attempts failed',
-            cloudName,
-            publicId: doc.cloudinaryPublicId,
-            storedUrl: doc.url,
-            resourceType,
-            format,
-            attempts,
-        }, { status: 502 })
-    }
+    // Try signed URL
+    try {
+        const signedUrl = cloudinary.url(doc.cloudinaryPublicId, {
+            secure: true,
+            resource_type: resourceType,
+            sign_url: true,
+            type: 'upload',
+        })
+        const resp = await fetch(signedUrl)
+        if (resp.ok) {
+            const contentType = resp.headers.get('content-type') || 'application/octet-stream'
+            const buffer = await resp.arrayBuffer()
+            return new NextResponse(buffer, {
+                headers: {
+                    'Content-Type': contentType,
+                    'Content-Disposition': `inline; filename="${doc.name}"`,
+                    'Cache-Control': 'private, max-age=3600',
+                },
+            })
+        }
+    } catch {}
 
     return NextResponse.json(
         { error: 'Failed to fetch document from storage.' },
