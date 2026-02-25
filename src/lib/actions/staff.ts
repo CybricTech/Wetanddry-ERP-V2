@@ -189,8 +189,7 @@ export async function uploadStaffDocument(formData: FormData) {
 
     try {
         console.log('Starting upload to Cloudinary...')
-        // Use 'raw' for PDFs - they will be stored as files, not images
-        const uploadResult = await uploadToCloudinary(file, 'staff-registry', 'raw')
+        const uploadResult = await uploadToCloudinary(file, 'staff-registry')
         console.log('Upload successful:', uploadResult)
 
         const doc = await prisma.staffDocument.create({

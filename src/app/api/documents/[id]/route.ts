@@ -15,23 +15,32 @@ function detectResourceType(url: string): 'image' | 'raw' | 'video' {
     return 'raw'
 }
 
-function getContentTypeFromName(name: string): string | null {
-    const ext = name.toLowerCase().split('.').pop()
-    const mimeTypes: Record<string, string> = {
-        pdf: 'application/pdf',
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        gif: 'image/gif',
-        webp: 'image/webp',
-        svg: 'image/svg+xml',
-        doc: 'application/msword',
-        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        xls: 'application/vnd.ms-excel',
-        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        txt: 'text/plain',
-    }
-    return ext ? mimeTypes[ext] || null : null
+const MIME_TYPES: Record<string, string> = {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    txt: 'text/plain',
+}
+
+function getContentTypeFromNameOrUrl(name: string, url: string): string | null {
+    // Try from file name first
+    const nameExt = name.toLowerCase().split('.').pop()
+    if (nameExt && MIME_TYPES[nameExt]) return MIME_TYPES[nameExt]
+
+    // Try from URL (strip query params first)
+    const urlPath = url.split('?')[0]
+    const urlExt = urlPath.split('.').pop()?.toLowerCase()
+    if (urlExt && MIME_TYPES[urlExt]) return MIME_TYPES[urlExt]
+
+    return null
 }
 
 export async function GET(
@@ -64,11 +73,13 @@ export async function GET(
 
     const resourceType = detectResourceType(doc.url)
 
-    // Determine content type from file name first, fall back to response header
-    const knownContentType = getContentTypeFromName(doc.name)
+    // Determine content type from file name or URL, fall back to response header
+    const knownContentType = getContentTypeFromNameOrUrl(doc.name, doc.url)
 
     const makeResponse = (buffer: ArrayBuffer, fallbackContentType: string) => {
-        const contentType = knownContentType || fallbackContentType
+        // Prefer known type; if Cloudinary returns octet-stream (raw uploads), default to PDF
+        const contentType = knownContentType
+            || (fallbackContentType === 'application/octet-stream' ? 'application/pdf' : fallbackContentType)
         return new NextResponse(buffer, {
             headers: {
                 'Content-Type': contentType,
