@@ -8,6 +8,7 @@ import {
     CreditCard, ArrowRight, Check, Box
 } from 'lucide-react'
 import { hasPermission } from '@/lib/permissions'
+import { formatCurrency } from '@/lib/utils'
 import {
     createSalesOrder,
     addOrderLineItem,
@@ -184,8 +185,8 @@ export default function OrdersClient({
                 <StatCard label="Draft" value={stats.draft} icon={FileText} bgClass="bg-gray-100" color="text-gray-600" />
                 <StatCard label="Pending" value={stats.pending} icon={Clock} bgClass="bg-yellow-100" color="text-yellow-600" />
                 <StatCard label="Active" value={stats.active} icon={Box} bgClass="bg-green-100" color="text-green-600" />
-                <StatCard label="Total Value" value={`₦${stats.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} icon={DollarSign} bgClass="bg-emerald-100" color="text-emerald-600" />
-                <StatCard label="Collected" value={`₦${stats.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} icon={CreditCard} bgClass="bg-purple-100" color="text-purple-600" />
+                <StatCard label="Total Value" value={formatCurrency(stats.totalValue)} icon={DollarSign} bgClass="bg-emerald-100" color="text-emerald-600" />
+                <StatCard label="Collected" value={formatCurrency(stats.totalPaid)} icon={CreditCard} bgClass="bg-purple-100" color="text-purple-600" />
             </div>
 
             {/* Filters */}
@@ -265,11 +266,11 @@ export default function OrdersClient({
                                         <td className="px-6 py-5">
                                             <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded-md">{order._count.lineItems} item(s)</span>
                                         </td>
-                                        <td className="px-6 py-5 font-bold text-gray-800 tabular-nums">₦{order.totalAmount.toLocaleString()}</td>
+                                        <td className="px-6 py-5 font-bold text-gray-800 tabular-nums">{formatCurrency(order.totalAmount)}</td>
                                         <td className="px-6 py-5">
                                             <div className="text-sm">
                                                 <div className={`font-bold tabular-nums ${order.amountPaid < order.totalAmount ? 'text-orange-600' : 'text-green-600'}`}>
-                                                    ₦{order.amountPaid.toLocaleString()}
+                                                    {formatCurrency(order.amountPaid)}
                                                 </div>
                                                 <div className="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden">
                                                     <div
@@ -648,15 +649,15 @@ function NewOrderWizard({
                                                 <tr key={idx} className="hover:bg-gray-50 transition-colors">
                                                     <td className="px-4 py-3 font-medium text-gray-800">{item.productName}</td>
                                                     <td className="px-4 py-3 text-gray-600">{item.cubicMeters}</td>
-                                                    <td className="px-4 py-3 text-gray-600">₦{item.unitPrice.toLocaleString()}</td>
-                                                    <td className="px-4 py-3 font-semibold text-gray-900">₦{item.lineTotal.toLocaleString()}</td>
+                                                    <td className="px-4 py-3 text-gray-600">{formatCurrency(item.unitPrice)}</td>
+                                                    <td className="px-4 py-3 font-semibold text-gray-900">{formatCurrency(item.lineTotal)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                         <tfoot className="bg-emerald-50 border-t border-emerald-100">
                                             <tr>
                                                 <td colSpan={3} className="px-4 py-3 text-right font-semibold text-emerald-800">Order Total:</td>
-                                                <td className="px-4 py-3 font-bold text-emerald-900">₦{orderTotal.toLocaleString()}</td>
+                                                <td className="px-4 py-3 font-bold text-emerald-900">{formatCurrency(orderTotal)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -961,7 +962,7 @@ function DetailsTab({
                         <span className="text-5xl font-bold text-emerald-600 leading-none">₦</span>
                     </div>
                     <div className="text-sm text-gray-500 mb-1">Total Value</div>
-                    <div className="text-2xl font-bold text-gray-900">₦{order.totalAmount.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(order.totalAmount)}</div>
                     <div className="w-full bg-gray-100 h-1 mt-3 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-500 w-full" />
                     </div>
@@ -972,7 +973,7 @@ function DetailsTab({
                         <CreditCard className="w-12 h-12 text-blue-600" />
                     </div>
                     <div className="text-sm text-gray-500 mb-1">Paid ({paidPercent.toFixed(0)}%)</div>
-                    <div className="text-2xl font-bold text-gray-900">₦{order.amountPaid.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(order.amountPaid)}</div>
                     <div className="w-full bg-gray-100 h-1 mt-3 rounded-full overflow-hidden">
                         <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.min(paidPercent, 100)}%` }} />
                     </div>
@@ -983,7 +984,7 @@ function DetailsTab({
                         <AlertCircle className="w-12 h-12 text-orange-600" />
                     </div>
                     <div className="text-sm text-gray-500 mb-1">Outstanding</div>
-                    <div className="text-2xl font-bold text-gray-900">₦{outstanding.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(outstanding)}</div>
                     <div className="w-full bg-gray-100 h-1 mt-3 rounded-full overflow-hidden">
                         <div className="h-full bg-orange-500 transition-all" style={{ width: `${Math.max(0, 100 - paidPercent)}%` }} />
                     </div>
@@ -1088,7 +1089,7 @@ function LineItemsTab({ order }: { order: Order }) {
                 </div>
                 <div className="bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="text-sm text-gray-600 mb-1">Total Value</div>
-                    <div className="text-2xl font-bold text-gray-800">₦{totalValue.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-800">{formatCurrency(totalValue)}</div>
                     <div className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-3xl font-bold text-orange-100">₦</div>
                 </div>
             </div>
@@ -1114,8 +1115,8 @@ function LineItemsTab({ order }: { order: Order }) {
                                         <div className="text-xs text-gray-500">{item.recipe?.name || item.productType.split(' - ')[1]}</div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-800">{item.cubicMeters}</td>
-                                    <td className="px-6 py-4 text-sm text-gray-800">₦{item.unitPrice.toLocaleString()}</td>
-                                    <td className="px-6 py-4 text-sm font-semibold text-gray-800">₦{item.lineTotal.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{formatCurrency(item.unitPrice)}</td>
+                                    <td className="px-6 py-4 text-sm font-semibold text-gray-800">{formatCurrency(item.lineTotal)}</td>
                                     <td className="px-6 py-4 text-sm text-gray-800">{item.deliveredQty} m³</td>
                                     <td className="px-6 py-4">
                                         <span className={`px-3 py-1 text-xs font-medium rounded-full border ${item.status === 'Fulfilled' ? 'bg-green-50 text-green-700 border-green-100' :
@@ -1131,7 +1132,7 @@ function LineItemsTab({ order }: { order: Order }) {
                         <tfoot className="bg-gray-50 border-t border-gray-100">
                             <tr>
                                 <td colSpan={3} className="px-6 py-4 text-right text-sm font-medium text-gray-700">Total:</td>
-                                <td className="px-6 py-4 text-sm font-bold text-gray-800">₦{totalValue.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-sm font-bold text-gray-800">{formatCurrency(totalValue)}</td>
                                 <td colSpan={2}></td>
                             </tr>
                         </tfoot>
@@ -1181,18 +1182,18 @@ function PaymentsTab({
             <div className="grid grid-cols-3 gap-4">
                 <div className="bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="text-sm text-gray-600 mb-1">Amount Paid</div>
-                    <div className="text-2xl font-bold text-gray-800">₦{order.amountPaid.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-800">{formatCurrency(order.amountPaid)}</div>
                     <CreditCard className="absolute top-4 right-4 w-8 h-8 text-blue-100" />
                 </div>
                 <div className="bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="text-sm text-gray-600 mb-1">Outstanding</div>
-                    <div className="text-2xl font-bold text-gray-800">₦{outstanding.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-800">{formatCurrency(outstanding)}</div>
                     <AlertCircle className="absolute top-4 right-4 w-8 h-8 text-orange-100" />
                 </div>
                 <div className="bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="text-sm text-gray-600 mb-1">Last Payment</div>
                     <div className="text-lg font-bold text-gray-800">
-                        {lastPayment ? `₦${lastPayment.amount.toLocaleString()}` : '-'}
+                        {lastPayment ? formatCurrency(lastPayment.amount) : '-'}
                     </div>
                     <div className="text-xs text-gray-500">
                         {lastPayment ? new Date(lastPayment.paymentDate).toLocaleDateString() : 'No payments'}
@@ -1226,7 +1227,7 @@ function PaymentsTab({
 
                         <div className="p-8 pb-0">
                             <h3 className="text-xl font-bold text-gray-900 mb-1">Record Payment</h3>
-                            <p className="text-sm text-gray-500">Outstanding: ₦{outstanding.toLocaleString()}</p>
+                            <p className="text-sm text-gray-500">Outstanding: {formatCurrency(outstanding)}</p>
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-8 space-y-5">
@@ -1308,7 +1309,7 @@ function PaymentsTab({
                                     <td className="px-6 py-4 text-sm text-gray-800 font-medium">{new Date(payment.paymentDate).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 text-sm text-gray-800">{payment.paymentMethod}</td>
                                     <td className="px-6 py-4 text-sm text-gray-500">{payment.referenceNumber || '-'}</td>
-                                    <td className="px-6 py-4 text-sm font-semibold text-gray-800">₦{payment.amount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-semibold text-gray-800">{formatCurrency(payment.amount)}</td>
                                     <td className="px-6 py-4">
                                         <span className={`px-3 py-1 text-xs font-medium rounded-full border ${payment.status === 'Verified' ? 'bg-green-50 text-green-700 border-green-100' :
                                             payment.status === 'Bounced' ? 'bg-red-50 text-red-700 border-red-100' :
@@ -1394,17 +1395,17 @@ function PaymentScheduleTab({
             <div className="grid grid-cols-3 gap-4">
                 <div className="bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="text-sm text-gray-600 mb-1">Scheduled Total</div>
-                    <div className="text-2xl font-bold text-gray-800">₦{scheduleTotal.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-800">{formatCurrency(scheduleTotal)}</div>
                     <Calendar className="absolute top-4 right-4 w-8 h-8 text-blue-100" />
                 </div>
                 <div className="bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="text-sm text-gray-600 mb-1">Order Total</div>
-                    <div className="text-2xl font-bold text-gray-800">₦{order.totalAmount.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-800">{formatCurrency(order.totalAmount)}</div>
                     <div className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-3xl font-bold text-emerald-100">₦</div>
                 </div>
                 <div className="bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="text-sm text-gray-600 mb-1">Remaining to Schedule</div>
-                    <div className="text-2xl font-bold text-gray-800">₦{remainingToSchedule.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-800">{formatCurrency(remainingToSchedule)}</div>
                     <div className="w-full bg-gray-100 h-1 mt-3 rounded-full overflow-hidden">
                         <div className="h-full bg-orange-500 transition-all" style={{ width: `${Math.min((remainingToSchedule / order.totalAmount) * 100, 100)}%` }} />
                     </div>
@@ -1489,7 +1490,7 @@ function PaymentScheduleTab({
                                 <tr key={item.id} className="hover:bg-gray-50/50">
                                     <td className="px-6 py-4 text-gray-800">{new Date(item.dueDate).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 text-gray-600">{item.description || '-'}</td>
-                                    <td className="px-6 py-4 font-medium text-gray-800">₦{item.amount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 font-medium text-gray-800">{formatCurrency(item.amount)}</td>
                                     <td className="px-6 py-4">
                                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${item.status === 'Paid' ? 'bg-green-100 text-green-700' :
                                             item.status === 'Overdue' ? 'bg-red-100 text-red-700' :
@@ -1517,7 +1518,7 @@ function PaymentScheduleTab({
                         <tfoot className="bg-gray-50 border-t">
                             <tr>
                                 <td colSpan={2} className="px-6 py-4 text-right font-medium text-gray-700">Schedule Total:</td>
-                                <td className="px-6 py-4 font-bold text-gray-800">₦{scheduleTotal.toLocaleString()}</td>
+                                <td className="px-6 py-4 font-bold text-gray-800">{formatCurrency(scheduleTotal)}</td>
                                 <td colSpan={canManage ? 2 : 1}></td>
                             </tr>
                         </tfoot>

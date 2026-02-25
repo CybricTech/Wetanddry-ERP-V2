@@ -8,7 +8,7 @@ import {
     Receipt, MapPin, Factory, Users, Building2, DollarSign, Clock,
     AlertCircle, Plus, X
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -162,15 +162,15 @@ export default function FinanceClient({ currentUser, userRole }: { currentUser: 
                             <h2>📊 Financial Summary (Last 30 Days)</h2>
                             <div class="summary-grid">
                                 <div class="summary-card">
-                                    <div class="summary-value">₦${financials?.summary.totalInventoryValue.toLocaleString() || 0}</div>
+                                    <div class="summary-value">${formatCurrency(financials?.summary.totalInventoryValue ?? 0)}</div>
                                     <div class="summary-label">Total Inventory Value</div>
                                 </div>
                                 <div class="summary-card">
-                                    <div class="summary-value">₦${financials?.summary.fuelCostLast30Days.toLocaleString() || 0}</div>
+                                    <div class="summary-value">${formatCurrency(financials?.summary.fuelCostLast30Days ?? 0)}</div>
                                     <div class="summary-label">Fuel Costs (30 Days)</div>
                                 </div>
                                 <div class="summary-card">
-                                    <div class="summary-value">₦${financials?.summary.maintenanceCostLast30Days.toLocaleString() || 0}</div>
+                                    <div class="summary-value">${formatCurrency(financials?.summary.maintenanceCostLast30Days ?? 0)}</div>
                                     <div class="summary-label">Maintenance Costs (30 Days)</div>
                                 </div>
                             </div>
@@ -178,9 +178,9 @@ export default function FinanceClient({ currentUser, userRole }: { currentUser: 
                             <h2>📦 Stock Movements</h2>
                             <table>
                                 <tr><th>Metric</th><th>Value</th></tr>
-                                <tr><td>Stock In Value</td><td>₦${financials?.summary.stockInValueLast30Days.toLocaleString() || 0}</td></tr>
-                                <tr><td>Stock Out Value</td><td>₦${financials?.summary.stockOutValueLast30Days.toLocaleString() || 0}</td></tr>
-                                <tr><td>Net Movement</td><td>₦${financials?.summary.netStockValueLast30Days.toLocaleString() || 0}</td></tr>
+                                <tr><td>Stock In Value</td><td>${formatCurrency(financials?.summary.stockInValueLast30Days ?? 0)}</td></tr>
+                                <tr><td>Stock Out Value</td><td>${formatCurrency(financials?.summary.stockOutValueLast30Days ?? 0)}</td></tr>
+                                <tr><td>Net Movement</td><td>${formatCurrency(financials?.summary.netStockValueLast30Days ?? 0)}</td></tr>
                             </table>
                             
                             <p style="margin-top: 50px; text-align: center; color: #666;">
@@ -376,7 +376,7 @@ function OverviewView({ data }: { data: { summary: FinanceSummary; recentTransac
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <SummaryCard
                     title="Total Inventory Value"
-                    value={`₦${summary.totalInventoryValue.toLocaleString()}`}
+                    value={formatCurrency(summary.totalInventoryValue)}
                     icon={<Package size={20} />}
                     color="blue"
                     subtitle={`${summary.inventoryItemCount} items`}
@@ -384,21 +384,21 @@ function OverviewView({ data }: { data: { summary: FinanceSummary; recentTransac
                 />
                 <SummaryCard
                     title="Fuel Costs (30 Days)"
-                    value={`₦${summary.fuelCostLast30Days.toLocaleString()}`}
+                    value={formatCurrency(summary.fuelCostLast30Days)}
                     icon={<Fuel size={20} />}
                     color="amber"
                     subtitle={`${summary.fuelLitersLast30Days.toLocaleString()} liters`}
                 />
                 <SummaryCard
                     title="Maintenance (30 Days)"
-                    value={`₦${summary.maintenanceCostLast30Days.toLocaleString()}`}
+                    value={formatCurrency(summary.maintenanceCostLast30Days)}
                     icon={<Wrench size={20} />}
                     color="purple"
                     subtitle={`${summary.maintenanceRecordCount} records`}
                 />
                 <SummaryCard
                     title="Net Stock Movement"
-                    value={`₦${Math.abs(summary.netStockValueLast30Days).toLocaleString()}`}
+                    value={formatCurrency(Math.abs(summary.netStockValueLast30Days))}
                     icon={summary.netStockValueLast30Days >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                     color={summary.netStockValueLast30Days >= 0 ? "emerald" : "red"}
                     subtitle={summary.netStockValueLast30Days >= 0 ? "Positive" : "Negative"}
@@ -414,7 +414,7 @@ function OverviewView({ data }: { data: { summary: FinanceSummary; recentTransac
                         </div>
                         <div>
                             <div className="text-sm text-gray-500">Stock In (30 Days)</div>
-                            <div className="text-xl font-bold text-emerald-600">₦{summary.stockInValueLast30Days.toLocaleString()}</div>
+                            <div className="text-xl font-bold text-emerald-600">{formatCurrency(summary.stockInValueLast30Days)}</div>
                         </div>
                     </div>
                 </div>
@@ -425,7 +425,7 @@ function OverviewView({ data }: { data: { summary: FinanceSummary; recentTransac
                         </div>
                         <div>
                             <div className="text-sm text-gray-500">Stock Out (30 Days)</div>
-                            <div className="text-xl font-bold text-blue-600">₦{summary.stockOutValueLast30Days.toLocaleString()}</div>
+                            <div className="text-xl font-bold text-blue-600">{formatCurrency(summary.stockOutValueLast30Days)}</div>
                         </div>
                     </div>
                 </div>
@@ -492,7 +492,7 @@ function OverviewView({ data }: { data: { summary: FinanceSummary; recentTransac
                                         <td className="px-6 py-4 text-gray-600">{t.location}</td>
                                         <td className="px-6 py-4 text-right text-gray-900">{t.quantity} {t.unit}</td>
                                         <td className="px-6 py-4 text-right font-medium text-gray-900">
-                                            {t.totalCost ? `₦${t.totalCost.toLocaleString()}` : '—'}
+                                            {t.totalCost ? formatCurrency(t.totalCost) : '—'}
                                         </td>
                                         <td className="px-6 py-4 text-gray-500">
                                             {new Date(t.createdAt).toLocaleDateString()}
@@ -520,7 +520,7 @@ function InventoryView({ data }: { data: any }) {
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                     <div className="p-6 border-b border-gray-100">
                         <h3 className="text-lg font-bold text-gray-900">Value by Category</h3>
-                        <p className="text-sm text-gray-500 mt-1">Total: ₦{totalValue.toLocaleString()}</p>
+                        <p className="text-sm text-gray-500 mt-1">Total: {formatCurrency(totalValue)}</p>
                     </div>
                     <div className="p-6 space-y-4">
                         {data.byCategory?.map((cat: any, idx: number) => (
@@ -528,7 +528,7 @@ function InventoryView({ data }: { data: any }) {
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="font-medium text-gray-900">{cat.name}</span>
                                     <div className="text-right">
-                                        <span className="font-bold text-gray-900">₦{cat.value.toLocaleString()}</span>
+                                        <span className="font-bold text-gray-900">{formatCurrency(cat.value)}</span>
                                         <span className="text-sm text-gray-500 ml-2">({cat.percentageOfTotal.toFixed(1)}%)</span>
                                     </div>
                                 </div>
@@ -565,7 +565,7 @@ function InventoryView({ data }: { data: any }) {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="font-bold text-gray-900">₦{loc.value.toLocaleString()}</div>
+                                    <div className="font-bold text-gray-900">{formatCurrency(loc.value)}</div>
                                     <div className="text-xs text-gray-500">{loc.percentageOfTotal.toFixed(1)}%</div>
                                 </div>
                             </div>
@@ -608,8 +608,8 @@ function InventoryView({ data }: { data: any }) {
                                     <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                                     <td className="px-6 py-4 text-gray-600">{item.category}</td>
                                     <td className="px-6 py-4 text-right text-gray-900">{item.quantity} {item.unit}</td>
-                                    <td className="px-6 py-4 text-right text-gray-600">₦{item.unitCost.toLocaleString()}</td>
-                                    <td className="px-6 py-4 text-right font-bold text-blue-600">₦{item.totalValue.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(item.unitCost)}</td>
+                                    <td className="px-6 py-4 text-right font-bold text-blue-600">{formatCurrency(item.totalValue)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -655,7 +655,7 @@ function FuelView({ data, period, setPeriod }: { data: any; period: string; setP
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <SummaryCard
                     title="Total Fuel Cost"
-                    value={`₦${data.summary.totalCost.toLocaleString()}`}
+                    value={formatCurrency(data.summary.totalCost)}
                     icon={<Fuel size={20} />}
                     color="amber"
                     highlight
@@ -668,7 +668,7 @@ function FuelView({ data, period, setPeriod }: { data: any; period: string; setP
                 />
                 <SummaryCard
                     title="Avg Cost/Liter"
-                    value={`₦${data.summary.avgCostPerLiter.toFixed(2)}`}
+                    value={formatCurrency(data.summary.avgCostPerLiter)}
                     icon={<TrendingUp size={20} />}
                     color="purple"
                 />
@@ -694,7 +694,7 @@ function FuelView({ data, period, setPeriod }: { data: any; period: string; setP
                                     <div
                                         className="w-full bg-amber-400 rounded-t-md transition-all"
                                         style={{ height: `${(day.cost / maxDailyValue) * 100}%`, minHeight: day.cost > 0 ? '4px' : '0' }}
-                                        title={`₦${day.cost.toLocaleString()}`}
+                                        title={formatCurrency(day.cost)}
                                     />
                                     <div className="text-xs text-gray-500 mt-2">
                                         {new Date(day.date).toLocaleDateString('en-NG', { weekday: 'short' })}
@@ -725,7 +725,7 @@ function FuelView({ data, period, setPeriod }: { data: any; period: string; setP
                                             <div className="text-xs text-gray-505">{truck.refills} refills · {truck.liters.toFixed(0)}L</div>
                                         </div>
                                     </div>
-                                    <div className="font-bold text-gray-900">₦{truck.cost.toLocaleString()}</div>
+                                    <div className="font-bold text-gray-900">{formatCurrency(truck.cost)}</div>
                                 </div>
                             ))
                         )}
@@ -769,7 +769,7 @@ function MaintenanceView({ data, period, setPeriod }: { data: any; period: strin
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <SummaryCard
                     title="Total Maintenance Cost"
-                    value={`₦${data.summary.totalCost.toLocaleString()}`}
+                    value={formatCurrency(data.summary.totalCost)}
                     icon={<Wrench size={20} />}
                     color="purple"
                     highlight
@@ -782,7 +782,7 @@ function MaintenanceView({ data, period, setPeriod }: { data: any; period: strin
                 />
                 <SummaryCard
                     title="Avg Cost/Record"
-                    value={`₦${data.summary.avgCostPerRecord.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                    value={formatCurrency(data.summary.avgCostPerRecord)}
                     icon={<TrendingUp size={20} />}
                     color="amber"
                 />
@@ -810,7 +810,7 @@ function MaintenanceView({ data, period, setPeriod }: { data: any; period: strin
                                             <div className="text-xs text-gray-500">{truck.count} records</div>
                                         </div>
                                     </div>
-                                    <div className="font-bold text-gray-900">₦{truck.cost.toLocaleString()}</div>
+                                    <div className="font-bold text-gray-900">{formatCurrency(truck.cost)}</div>
                                 </div>
                             ))
                         )}
@@ -832,7 +832,7 @@ function MaintenanceView({ data, period, setPeriod }: { data: any; period: strin
                                         <div className="font-medium text-gray-900">{type.name}</div>
                                         <div className="text-xs text-gray-500">{type.count} records</div>
                                     </div>
-                                    <div className="font-bold text-gray-900">₦{type.cost.toLocaleString()}</div>
+                                    <div className="font-bold text-gray-900">{formatCurrency(type.cost)}</div>
                                 </div>
                             ))
                         )}
@@ -941,7 +941,7 @@ function ExpensesView({
                     </div>
                     <div>
                         <p className="text-sm text-gray-500">Total Expenses</p>
-                        <p className="text-xl font-bold text-gray-900">₦{expenses.reduce((s, e) => s + e.amount, 0).toLocaleString()}</p>
+                        <p className="text-xl font-bold text-gray-900">{formatCurrency(expenses.reduce((s, e) => s + e.amount, 0))}</p>
                         <p className="text-xs text-gray-400">{expenses.length} records</p>
                     </div>
                 </div>
@@ -951,7 +951,7 @@ function ExpensesView({
                     </div>
                     <div>
                         <p className="text-sm text-gray-500">Approved</p>
-                        <p className="text-xl font-bold text-green-700">₦{totalApproved.toLocaleString()}</p>
+                        <p className="text-xl font-bold text-green-700">{formatCurrency(totalApproved)}</p>
                         <p className="text-xs text-gray-400">{expenses.filter(e => e.status === 'Approved').length} records</p>
                     </div>
                 </div>
@@ -961,7 +961,7 @@ function ExpensesView({
                     </div>
                     <div>
                         <p className="text-sm text-gray-500">Pending Approval</p>
-                        <p className="text-xl font-bold text-amber-700">₦{totalPending.toLocaleString()}</p>
+                        <p className="text-xl font-bold text-amber-700">{formatCurrency(totalPending)}</p>
                         <p className="text-xs text-gray-400">{expenses.filter(e => e.status === 'Pending').length} records</p>
                     </div>
                 </div>
@@ -1054,7 +1054,7 @@ function ExpensesView({
                                             )}
                                         </td>
                                         <td className="px-5 py-4">
-                                            <span className="font-semibold text-gray-900">₦{expense.amount.toLocaleString()}</span>
+                                            <span className="font-semibold text-gray-900">{formatCurrency(expense.amount)}</span>
                                         </td>
                                         <td className="px-5 py-4">
                                             <span className="text-gray-600">

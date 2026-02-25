@@ -8,7 +8,7 @@ import {
     Star, UserCircle, FileText, Factory,
     ArrowUpRight, ArrowDownRight, Wallet, PieChart
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { getClients, createClient, getCRMMetrics } from '@/lib/actions/crm'
 
 // ==================== TYPE DEFINITIONS ====================
@@ -355,7 +355,7 @@ function ClientsTab({
                                     <p className="text-xs text-gray-500">m³ Total</p>
                                 </div>
                                 <div className="text-center">
-                                    <p className="text-lg font-bold text-violet-600">₦{(client.stats.totalExpenses / 1000).toFixed(0)}k</p>
+                                    <p className="text-lg font-bold text-violet-600">{formatCurrency(client.stats.totalExpenses)}</p>
                                     <p className="text-xs text-gray-500">Expenses</p>
                                 </div>
                             </div>
@@ -439,7 +439,7 @@ function AnalyticsTab({ analytics, loading }: { analytics: CRMMetrics; loading: 
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pipeline Value</p>
                     <p className="text-3xl font-bold text-gray-900 mt-1">
-                        ₦{(analytics.revenue.totalOrderValue / 1_000_000).toFixed(1)}M
+                        {formatCurrency(analytics.revenue.totalOrderValue)}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">{analytics.totalOrders} total orders</p>
                 </div>
@@ -447,7 +447,7 @@ function AnalyticsTab({ analytics, loading }: { analytics: CRMMetrics; loading: 
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Collection Rate</p>
                     <p className="text-3xl font-bold text-gray-900 mt-1">{analytics.revenue.collectionRate.toFixed(1)}%</p>
                     <p className="text-xs text-gray-500 mt-1">
-                        ₦{(analytics.revenue.totalOutstanding / 1_000_000).toFixed(1)}M outstanding
+                        {formatCurrency(analytics.revenue.totalOutstanding)} outstanding
                     </p>
                 </div>
             </div>
@@ -463,14 +463,14 @@ function AnalyticsTab({ analytics, loading }: { analytics: CRMMetrics; loading: 
                         <div>
                             <div className="flex justify-between text-sm mb-1">
                                 <span className="text-gray-600">Total Order Value</span>
-                                <span className="font-semibold text-gray-900">₦{analytics.revenue.totalOrderValue.toLocaleString()}</span>
+                                <span className="font-semibold text-gray-900">{formatCurrency(analytics.revenue.totalOrderValue)}</span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full" />
                         </div>
                         <div>
                             <div className="flex justify-between text-sm mb-1">
                                 <span className="text-gray-600">Collected</span>
-                                <span className="font-semibold text-emerald-600">₦{analytics.revenue.totalCollected.toLocaleString()}</span>
+                                <span className="font-semibold text-emerald-600">{formatCurrency(analytics.revenue.totalCollected)}</span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                                 <div
@@ -482,7 +482,7 @@ function AnalyticsTab({ analytics, loading }: { analytics: CRMMetrics; loading: 
                         <div>
                             <div className="flex justify-between text-sm mb-1">
                                 <span className="text-gray-600">Outstanding</span>
-                                <span className="font-semibold text-red-500">₦{analytics.revenue.totalOutstanding.toLocaleString()}</span>
+                                <span className="font-semibold text-red-500">{formatCurrency(analytics.revenue.totalOutstanding)}</span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                                 <div
@@ -517,7 +517,7 @@ function AnalyticsTab({ analytics, loading }: { analytics: CRMMetrics; loading: 
                                     <div className="flex-1">
                                         <div className="flex justify-between text-xs mb-1">
                                             <span className="text-gray-500">{entry.count} orders</span>
-                                            <span className="font-medium text-gray-700">₦{entry.value.toLocaleString()}</span>
+                                            <span className="font-medium text-gray-700">{formatCurrency(entry.value)}</span>
                                         </div>
                                         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                                             <div
@@ -593,7 +593,7 @@ function AnalyticsTab({ analytics, loading }: { analytics: CRMMetrics; loading: 
                                     <div className="flex justify-between items-baseline">
                                         <span className="font-medium text-gray-900 text-sm truncate">{client.name}</span>
                                         <span className="font-bold text-gray-900 text-sm ml-2 shrink-0">
-                                            ₦{client.totalValue.toLocaleString()}
+                                            {formatCurrency(client.totalValue)}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2 mt-0.5">
@@ -1012,7 +1012,7 @@ function ClientDetailModal({
                         <div class="stat-label">Total Volume (m³)</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value">₦${reportTotalPaid.toLocaleString()}</div>
+                        <div class="stat-value">${formatCurrency(reportTotalPaid)}</div>
                         <div class="stat-label">Total Paid</div>
                     </div>
                 </div>
@@ -1036,8 +1036,8 @@ function ClientDetailModal({
                                 <td>${new Date(order.orderDate).toLocaleDateString('en-NG')}</td>
                                 <td>${order.lineItems?.map((item: any) => item.recipe?.name || item.productType).join(', ') || '-'}</td>
                                 <td>${order.lineItems?.reduce((sum: number, item: any) => sum + (item.cubicMeters || 0), 0).toFixed(1)} m³</td>
-                                <td>₦${order.totalAmount?.toLocaleString() || 0}</td>
-                                <td>₦${order.amountPaid?.toLocaleString() || 0}</td>
+                                <td>${formatCurrency(order.totalAmount ?? 0)}</td>
+                                <td>${formatCurrency(order.amountPaid ?? 0)}</td>
                                 <td>${order.status}</td>
                             </tr>
                         `).join('')}
@@ -1147,11 +1147,11 @@ function ClientDetailModal({
                                     <p className="text-xs text-blue-600">Volume (m³)</p>
                                 </div>
                                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-center">
-                                    <p className="text-xl font-bold text-emerald-700">₦{(client.walletBalance || 0).toLocaleString()}</p>
+                                    <p className="text-xl font-bold text-emerald-700">{formatCurrency(client.walletBalance || 0)}</p>
                                     <p className="text-xs text-emerald-600">Wallet Balance</p>
                                 </div>
                                 <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 text-center">
-                                    <p className="text-xl font-bold text-red-600">₦{(client.stats.totalExpenses / 1000).toFixed(0)}k</p>
+                                    <p className="text-xl font-bold text-red-600">{formatCurrency(client.stats.totalExpenses)}</p>
                                     <p className="text-xs text-red-500">Expenses</p>
                                 </div>
                             </div>
@@ -1253,7 +1253,7 @@ function ClientDetailModal({
                             <p className="text-sm text-gray-500">
                                 Showing <span className="font-medium text-gray-700">{filteredOrders.length}</span> orders &nbsp;
                                 Volume: <span className="font-medium text-violet-600">{totalVolume.toFixed(1)} m³</span> &nbsp;
-                                Paid: <span className="font-medium text-emerald-600">₦{totalPaid.toLocaleString()}</span>
+                                Paid: <span className="font-medium text-emerald-600">{formatCurrency(totalPaid)}</span>
                             </p>
 
                             {/* Orders Table */}
@@ -1293,8 +1293,8 @@ function ClientDetailModal({
                                                             <span className="font-medium text-gray-900">{products}</span>
                                                         </td>
                                                         <td className="px-4 py-2.5 text-gray-900">{orderVolume.toFixed(1)} m³</td>
-                                                        <td className="px-4 py-2.5 text-gray-900">₦{order.totalAmount?.toLocaleString() || 0}</td>
-                                                        <td className="px-4 py-2.5 text-emerald-600 font-medium">₦{order.amountPaid?.toLocaleString() || 0}</td>
+                                                        <td className="px-4 py-2.5 text-gray-900">{formatCurrency(order.totalAmount ?? 0)}</td>
+                                                        <td className="px-4 py-2.5 text-emerald-600 font-medium">{formatCurrency(order.amountPaid ?? 0)}</td>
                                                         <td className="px-4 py-2.5">
                                                             <span className={cn(
                                                                 "px-2 py-0.5 text-xs font-medium rounded-full",
@@ -1370,7 +1370,7 @@ function ClientDetailModal({
                                         <p className="text-xs text-gray-500">Total Volume (m³)</p>
                                     </div>
                                     <div className="text-center p-4 bg-emerald-50 rounded-lg">
-                                        <p className="text-2xl font-bold text-emerald-600">₦{reportTotalPaid.toLocaleString()}</p>
+                                        <p className="text-2xl font-bold text-emerald-600">{formatCurrency(reportTotalPaid)}</p>
                                         <p className="text-xs text-gray-500">Total Paid</p>
                                     </div>
                                 </div>

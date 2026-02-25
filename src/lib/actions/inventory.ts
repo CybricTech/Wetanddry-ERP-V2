@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
+import { formatCurrency } from '@/lib/utils'
 import {
     notifyApprovers,
     notifyRequester,
@@ -2407,7 +2408,7 @@ export async function applyWACAsUnitCost(inventoryItemId: string) {
             inventoryItemId,
             price: wacResult.wac,
             source: 'WAC Calculation',
-            notes: `WAC calculated from ${wacResult.transactionCount} transactions. Previous: ₦${item.unitCost.toLocaleString()}`,
+            notes: `WAC calculated from ${wacResult.transactionCount} transactions. Previous: ${formatCurrency(item.unitCost)}`,
             recordedBy: session.user.name || 'Unknown'
         }
     })

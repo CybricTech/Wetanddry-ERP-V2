@@ -5,7 +5,7 @@ import {
     ClipboardCheck, Plus, Search, Eye, CheckCircle, Clock,
     AlertTriangle, X, ArrowRight, Package, RefreshCw, ArrowUpRight, Play
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { hasPermission } from '@/lib/permissions'
 import {
     startReconciliation,
@@ -192,7 +192,7 @@ export default function ReconciliationClient({
                                     <td className="px-4 py-3">{recon._count.items}</td>
                                     <td className="px-4 py-3">
                                         <span className={recon.varianceValue < 0 ? 'text-red-600' : recon.varianceValue > 0 ? 'text-green-600' : ''}>
-                                            ₦{Math.abs(recon.varianceValue).toLocaleString()}
+                                            {formatCurrency(Math.abs(recon.varianceValue))}
                                             {recon.varianceValue !== 0 && (recon.varianceValue < 0 ? ' ▼' : ' ▲')}
                                         </span>
                                     </td>
@@ -465,12 +465,12 @@ function ReconciliationWizard({
                     <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden">
                         <div className="absolute right-0 top-0 p-2 opacity-5 text-emerald-500"><ArrowUpRight size={40} /></div>
                         <div className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-1">Total Gains</div>
-                        <div className="text-2xl font-bold text-emerald-600">₦{totalGains.toLocaleString()}</div>
+                        <div className="text-2xl font-bold text-emerald-600">{formatCurrency(totalGains)}</div>
                     </div>
                     <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden">
                         <div className="absolute right-0 top-0 p-2 opacity-5 text-red-500"><ArrowRight size={40} className="rotate-45" /></div>
                         <div className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-1">Total Losses</div>
-                        <div className="text-2xl font-bold text-red-600">₦{totalLosses.toLocaleString()}</div>
+                        <div className="text-2xl font-bold text-red-600">{formatCurrency(totalLosses)}</div>
                     </div>
                 </div>
 

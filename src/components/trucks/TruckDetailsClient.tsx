@@ -7,7 +7,7 @@ import {
     Plus, Wrench, Cog, CalendarClock, AlertTriangle, Clock,
     Gauge, MapPin, DollarSign, Battery, CircleDot
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import AddMaintenanceModal from './AddMaintenanceModal'
 import ScheduleMaintenanceModal from './ScheduleMaintenanceModal'
 import AddPartModal from './AddPartModal'
@@ -335,7 +335,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                                 <span className="text-blue-100">Maintenance Cost (This Year)</span>
                             </div>
                             <div className="text-3xl font-bold">
-                                ₦{maintenanceCostThisYear.toLocaleString()}
+                                {formatCurrency(maintenanceCostThisYear)}
                             </div>
                             <div className="text-blue-100 text-sm mt-1">
                                 {truck.maintenanceRecords.filter(r => new Date(r.date).getFullYear() === thisYear).length} services performed
@@ -414,7 +414,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                                                 {record.mileageAtService?.toLocaleString() || '-'} km
                                             </td>
                                             <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                                ₦{record.cost.toLocaleString()}
+                                                {formatCurrency(record.cost)}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className="inline-block px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">

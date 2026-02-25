@@ -2,6 +2,7 @@
 
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
+import { formatCurrency } from '@/lib/utils'
 
 // ==================== COMPANY-WIDE FINANCE DATA ====================
 
@@ -371,12 +372,12 @@ export async function exportFinanceReportCSV() {
     lines.push('=== COMPANY FINANCIAL SUMMARY (Last 30 Days) ===')
     lines.push('')
     lines.push('Category,Value')
-    lines.push(`Total Inventory Value,₦${financials.summary.totalInventoryValue.toLocaleString()}`)
-    lines.push(`Stock In Value,₦${financials.summary.stockInValueLast30Days.toLocaleString()}`)
-    lines.push(`Stock Out Value,₦${financials.summary.stockOutValueLast30Days.toLocaleString()}`)
-    lines.push(`Net Stock Movement,₦${financials.summary.netStockValueLast30Days.toLocaleString()}`)
-    lines.push(`Fuel Costs,₦${financials.summary.fuelCostLast30Days.toLocaleString()}`)
-    lines.push(`Maintenance Costs,₦${financials.summary.maintenanceCostLast30Days.toLocaleString()}`)
+    lines.push(`Total Inventory Value,${formatCurrency(financials.summary.totalInventoryValue)}`)
+    lines.push(`Stock In Value,${formatCurrency(financials.summary.stockInValueLast30Days)}`)
+    lines.push(`Stock Out Value,${formatCurrency(financials.summary.stockOutValueLast30Days)}`)
+    lines.push(`Net Stock Movement,${formatCurrency(financials.summary.netStockValueLast30Days)}`)
+    lines.push(`Fuel Costs,${formatCurrency(financials.summary.fuelCostLast30Days)}`)
+    lines.push(`Maintenance Costs,${formatCurrency(financials.summary.maintenanceCostLast30Days)}`)
     lines.push('')
 
     // Inventory breakdown
@@ -384,7 +385,7 @@ export async function exportFinanceReportCSV() {
     lines.push('')
     lines.push('Category,Item Count,Total Value,Percentage')
     inventory.byCategory.forEach(cat => {
-        lines.push(`"${cat.name}",${cat.count},₦${cat.value.toLocaleString()},${cat.percentageOfTotal.toFixed(1)}%`)
+        lines.push(`"${cat.name}",${cat.count},${formatCurrency(cat.value)},${cat.percentageOfTotal.toFixed(1)}%`)
     })
     lines.push('')
 
@@ -393,7 +394,7 @@ export async function exportFinanceReportCSV() {
     lines.push('')
     lines.push('Truck,Cost,Liters,Refills')
     fuel.byTruck.forEach(t => {
-        lines.push(`"${t.name}",₦${t.cost.toLocaleString()},${t.liters.toFixed(1)},${t.refills}`)
+        lines.push(`"${t.name}",${formatCurrency(t.cost)},${t.liters.toFixed(1)},${t.refills}`)
     })
     lines.push('')
 
@@ -402,7 +403,7 @@ export async function exportFinanceReportCSV() {
     lines.push('')
     lines.push('Type,Count,Total Cost')
     maintenance.byType.forEach(t => {
-        lines.push(`"${t.name}",${t.count},₦${t.cost.toLocaleString()}`)
+        lines.push(`"${t.name}",${t.count},${formatCurrency(t.cost)}`)
     })
 
     return lines.join('\n')

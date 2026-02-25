@@ -10,7 +10,7 @@ import {
     AlertCircle, TrendingUp, TrendingDown, BarChart3, History, FileText, Save,
     Container, ClipboardList, Lock
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import ActivityTab, { PendingApproval, StockTransaction } from './ActivityTab';
 
 // Type definitions
@@ -227,7 +227,7 @@ export default function InventoryClient({
                 />
                 <StatsCard
                     title="Total Value"
-                    value={`₦${totalValue.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`}
+                    value={formatCurrency(totalValue)}
                     icon={<DollarSign size={22} />}
                     color="bg-gradient-to-br from-emerald-500 to-emerald-600"
                     trend={+12.4}
@@ -403,7 +403,7 @@ export default function InventoryClient({
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-sm font-medium text-gray-900">
-                                                ₦{(item.quantity * item.unitCost).toLocaleString()}
+                                                {formatCurrency(item.quantity * item.unitCost)}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
@@ -1213,7 +1213,7 @@ function StockModal({ type, item, items, currentUser, onClose }: {
                                     <div>
                                         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Current Cost</span>
                                         <div className="font-bold text-gray-900 text-lg mt-1">
-                                            ₦{selectedItem.unitCost.toLocaleString()}
+                                            {formatCurrency(selectedItem.unitCost)}
                                         </div>
                                     </div>
                                     <div>
@@ -1333,7 +1333,7 @@ function StockModal({ type, item, items, currentUser, onClose }: {
                                     <div>
                                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Total Cost</label>
                                         <div className="px-4 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-emerald-700 font-bold flex items-center h-[52px]">
-                                            ₦{parseFloat(totalCost).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                                            {formatCurrency(parseFloat(totalCost))}
                                         </div>
                                     </div>
                                 </>
@@ -1352,7 +1352,7 @@ function StockModal({ type, item, items, currentUser, onClose }: {
                                 </div>
                                 <div>
                                     <span className="font-semibold text-amber-900 block text-sm">Update stored unit cost</span>
-                                    <p className="text-xs text-amber-600 mt-0.5">Check this to update the system price for this item to ₦{(parseFloat(unitCost) || 0).toLocaleString()} for all future transactions.</p>
+                                    <p className="text-xs text-amber-600 mt-0.5">Check this to update the system price for this item to {formatCurrency(parseFloat(unitCost) || 0)} for all future transactions.</p>
                                 </div>
                             </label>
                         )}
@@ -2242,11 +2242,11 @@ function ViewItemModal({ item, locations, onClose, userRole }: {
                                 </div>
                                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                                     <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Unit Cost</div>
-                                    <div className="text-2xl font-bold text-gray-900">₦{item.unitCost.toLocaleString()}</div>
+                                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(item.unitCost)}</div>
                                 </div>
                                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                                     <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Total Value</div>
-                                    <div className="text-2xl font-bold text-indigo-600">₦{item.totalValue.toLocaleString()}</div>
+                                    <div className="text-2xl font-bold text-indigo-600">{formatCurrency(item.totalValue)}</div>
                                 </div>
                                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                                     <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Status</div>
@@ -2775,7 +2775,7 @@ function PriceHistory({ itemId, currentPrice, unit }: { itemId: string; currentP
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border border-blue-200">
                     <div className="text-xs font-medium text-blue-600 uppercase tracking-wider mb-1">Current Unit Cost</div>
                     <div className="text-2xl font-bold text-blue-900">
-                        ₦{currentPrice.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                        {formatCurrency(currentPrice)}
                     </div>
                     <div className="text-xs text-blue-600 mt-1">per {unit}</div>
                 </div>
@@ -2785,7 +2785,7 @@ function PriceHistory({ itemId, currentPrice, unit }: { itemId: string; currentP
                         <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-5 rounded-xl border border-emerald-200">
                             <div className="text-xs font-medium text-emerald-600 uppercase tracking-wider mb-1">Weighted Average Cost</div>
                             <div className="text-2xl font-bold text-emerald-900">
-                                ₦{wacData.wac?.toLocaleString('en-NG', { minimumFractionDigits: 2 }) || 'N/A'}
+                                {wacData.wac ? formatCurrency(wacData.wac) : 'N/A'}
                             </div>
                             <div className="text-xs text-emerald-600 mt-1">
                                 From {wacData.transactionCount || 0} transactions
@@ -2856,7 +2856,7 @@ function PriceHistory({ itemId, currentPrice, unit }: { itemId: string; currentP
                         <div className="bg-gray-50 p-3 rounded-lg">
                             <div className="text-xs text-gray-500 mb-1">Previous Price</div>
                             <div className="font-semibold text-gray-900">
-                                ₦{priceData.metrics.previousPrice?.toLocaleString('en-NG', { minimumFractionDigits: 2 }) || 'N/A'}
+                                {priceData.metrics.previousPrice != null ? formatCurrency(priceData.metrics.previousPrice) : 'N/A'}
                             </div>
                         </div>
                         <div className="bg-gray-50 p-3 rounded-lg">
@@ -2873,7 +2873,7 @@ function PriceHistory({ itemId, currentPrice, unit }: { itemId: string; currentP
                         <div className="bg-gray-50 p-3 rounded-lg">
                             <div className="text-xs text-gray-500 mb-1">Oldest Recorded</div>
                             <div className="font-semibold text-gray-900">
-                                ₦{priceData.metrics.oldestPrice?.toLocaleString('en-NG', { minimumFractionDigits: 2 }) || 'N/A'}
+                                {priceData.metrics.oldestPrice != null ? formatCurrency(priceData.metrics.oldestPrice) : 'N/A'}
                             </div>
                         </div>
                         <div className="bg-gray-50 p-3 rounded-lg">
@@ -2916,7 +2916,7 @@ function PriceHistory({ itemId, currentPrice, unit }: { itemId: string; currentP
                                     </div>
                                     <div>
                                         <div className="text-sm font-semibold text-gray-900">
-                                            ₦{record.price.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                                            {formatCurrency(record.price)}
                                         </div>
                                         <div className="text-xs text-gray-500">
                                             {record.source || 'Manual Entry'}

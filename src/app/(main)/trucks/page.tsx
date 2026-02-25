@@ -5,7 +5,7 @@ import {
     Wrench, Package, AlertTriangle, CheckCircle, Clock, Gauge,
     DollarSign
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { auth } from '@/auth'
 import { hasPermission } from '@/lib/permissions'
 
@@ -112,7 +112,7 @@ export default async function TrucksPage() {
                             <DollarSign size={20} className="text-purple-600" />
                         </div>
                     </div>
-                    <div className="text-2xl font-bold text-gray-900">₦{(stats.totalMaintenanceCost / 1000).toFixed(0)}K</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalMaintenanceCost)}</div>
                     <div className="text-sm text-gray-600">YTD Maintenance</div>
                 </div>
             </div>

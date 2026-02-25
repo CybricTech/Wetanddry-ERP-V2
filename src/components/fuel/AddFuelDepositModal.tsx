@@ -4,6 +4,7 @@ import { createFuelDeposit } from '@/lib/actions/fuel'
 import { X, Plus, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
+import { formatCurrency } from '@/lib/utils'
 
 function SubmitButton() {
     const { pending } = useFormStatus()
@@ -121,7 +122,7 @@ export default function AddFuelDepositModal({ onClose }: AddFuelDepositModalProp
                     {/* Live total cost calculation */}
                     <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center justify-between">
                         <span className="text-sm font-medium text-emerald-700">Total Cost</span>
-                        <span className="text-xl font-bold text-emerald-800">₦{parseFloat(totalCost).toLocaleString()}</span>
+                        <span className="text-xl font-bold text-emerald-800">{formatCurrency(parseFloat(totalCost))}</span>
                     </div>
 
                     <div>

@@ -9,7 +9,7 @@ import {
     Clock, CheckCircle2, XCircle, Search, Filter, ChevronDown, ArrowDownRight, ArrowUpRight,
     Package, FileText, History, Download, AlertCircle, Loader2, X, Eye, RefreshCw, Calendar, Radio
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -387,7 +387,7 @@ function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApproval
                                         )}
                                         {item.totalCost && (
                                             <span className="text-gray-600">
-                                                <span className="font-medium">Value:</span> ₦{item.totalCost.toLocaleString()}
+                                                <span className="font-medium">Value:</span> {formatCurrency(item.totalCost)}
                                             </span>
                                         )}
                                     </div>
@@ -591,7 +591,7 @@ function MovementLogSubTab({
                                             <span className="font-normal text-gray-500 ml-1">{t.item.unit}</span>
                                         </span>
                                         {t.totalCost && (
-                                            <div className="text-xs text-gray-500">₦{t.totalCost.toLocaleString()}</div>
+                                            <div className="text-xs text-gray-500">{formatCurrency(t.totalCost)}</div>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
@@ -943,7 +943,7 @@ function AuditTrailSubTab() {
                                                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
                                                     <span>Location: {log.details.location}</span>
                                                     {log.details.supplierName && <span>Supplier: {log.details.supplierName}</span>}
-                                                    {log.details.totalCost && <span>Value: ₦{log.details.totalCost.toLocaleString()}</span>}
+                                                    {log.details.totalCost && <span>Value: {formatCurrency(log.details.totalCost)}</span>}
                                                 </div>
                                             </div>
                                             <div className="text-right text-xs">
@@ -1033,8 +1033,8 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: StockTr
                                 highlight={true}
                                 highlightColor={transaction.type === 'OUT' ? 'text-blue-600' : 'text-emerald-600'}
                             />
-                            <DetailRow label="Unit Cost" value={transaction.unitCostAtTime ? `₦${transaction.unitCostAtTime.toLocaleString()}` : '—'} />
-                            <DetailRow label="Total Value" value={transaction.totalCost ? `₦${transaction.totalCost.toLocaleString()}` : '—'} />
+                            <DetailRow label="Unit Cost" value={transaction.unitCostAtTime ? formatCurrency(transaction.unitCostAtTime) : '—'} />
+                            <DetailRow label="Total Value" value={transaction.totalCost ? formatCurrency(transaction.totalCost) : '—'} />
                         </div>
                     </div>
 

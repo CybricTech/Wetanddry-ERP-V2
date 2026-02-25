@@ -1,7 +1,7 @@
 import { getSpareParts, getLowStockParts } from '@/lib/actions/trucks'
 import Link from 'next/link'
 import { Package, Plus, AlertTriangle, Search, Filter, ArrowLeft } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import AddSparePartButton from '@/components/trucks/AddSparePartButton'
 
 export default async function SparePartsPage() {
@@ -90,7 +90,7 @@ export default async function SparePartsPage() {
                         <span className="text-gray-600 text-sm">Total Value</span>
                     </div>
                     <div className="text-2xl font-bold text-gray-900">
-                        ₦{spareParts.reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0).toLocaleString()}
+                        {formatCurrency(spareParts.reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0))}
                     </div>
                 </div>
             </div>
@@ -181,7 +181,7 @@ export default async function SparePartsPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                                ₦{part.purchasePrice.toLocaleString()}
+                                                {formatCurrency(part.purchasePrice)}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600">{part.supplier || '-'}</td>
                                             <td className="px-6 py-4 text-sm text-gray-600">{part.location || '-'}</td>

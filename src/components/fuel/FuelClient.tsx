@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Fuel, TrendingUp, DollarSign, Droplet, Plus, Package, Zap, BarChart3, AlertTriangle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import AddFuelDepositModal from './AddFuelDepositModal'
 import AddEquipmentModal from './AddEquipmentModal'
 
@@ -181,7 +181,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                         </div>
                         <div>
                             <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Spent</div>
-                            <div className="text-2xl font-bold text-gray-900 mt-0.5">₦{totalDepositCost.toLocaleString()}</div>
+                            <div className="text-2xl font-bold text-gray-900 mt-0.5">{formatCurrency(totalDepositCost)}</div>
                         </div>
                     </div>
                 </div>
@@ -192,7 +192,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                         </div>
                         <div>
                             <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Blended Cost</div>
-                            <div className="text-2xl font-bold text-gray-900 mt-0.5">₦{blendedCostPerLiter.toFixed(2)} <span className="text-sm text-gray-400 font-normal">/L</span></div>
+                            <div className="text-2xl font-bold text-gray-900 mt-0.5">{formatCurrency(blendedCostPerLiter)} <span className="text-sm text-gray-400 font-normal">/L</span></div>
                         </div>
                     </div>
                 </div>
@@ -344,7 +344,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                                 </div>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-1.5">
-                                                Based on blended rate: <span className="font-semibold text-gray-700">₦{blendedCostPerLiter.toFixed(2)}/L</span>
+                                                Based on blended rate: <span className="font-semibold text-gray-700">{formatCurrency(blendedCostPerLiter)}/L</span>
                                             </p>
                                         </div>
 
@@ -441,7 +441,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                                         <span className="font-medium text-gray-900">{log.liters}</span> L
                                                     </td>
                                                     <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                                                        ₦{log.cost.toLocaleString()}
+                                                        {formatCurrency(log.cost)}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         {log.efficiency ? (
@@ -507,8 +507,8 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                             <td className="px-6 py-4 text-sm whitespace-nowrap">
                                                 <span className="font-semibold text-emerald-600">{deposit.liters.toLocaleString()}</span> <span className="text-gray-400">L</span>
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">₦{deposit.pricePerLiter.toLocaleString()}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 font-medium whitespace-nowrap">₦{deposit.totalCost.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{formatCurrency(deposit.pricePerLiter)}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 font-medium whitespace-nowrap">{formatCurrency(deposit.totalCost)}</td>
                                             <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
                                                 {deposit.supplier || <span className="text-gray-300">—</span>}
                                             </td>
@@ -530,12 +530,12 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                         <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-5 rounded-xl text-white shadow-lg">
                             <div className="text-sm opacity-80 font-medium">Total Deposited</div>
                             <div className="text-3xl font-bold mt-1">{totalDeposited.toLocaleString()} L</div>
-                            <div className="text-sm opacity-70 mt-1">₦{totalDepositCost.toLocaleString()} total spent</div>
+                            <div className="text-sm opacity-70 mt-1">{formatCurrency(totalDepositCost)} total spent</div>
                         </div>
                         <div className="bg-gradient-to-br from-orange-500 to-orange-700 p-5 rounded-xl text-white shadow-lg">
                             <div className="text-sm opacity-80 font-medium">Total Issued</div>
                             <div className="text-3xl font-bold mt-1">{totalFuel.toLocaleString()} L</div>
-                            <div className="text-sm opacity-70 mt-1">₦{totalCost.toLocaleString()} total value</div>
+                            <div className="text-sm opacity-70 mt-1">{formatCurrency(totalCost)} total value</div>
                         </div>
                         <div className={cn(
                             "p-5 rounded-xl text-white shadow-lg",
@@ -543,7 +543,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                         )}>
                             <div className="text-sm opacity-80 font-medium">Remaining Balance</div>
                             <div className="text-3xl font-bold mt-1">{currentStock.toLocaleString(undefined, { maximumFractionDigits: 1 })} L</div>
-                            <div className="text-sm opacity-70 mt-1">Blended cost: ₦{blendedCostPerLiter.toFixed(2)}/L</div>
+                            <div className="text-sm opacity-70 mt-1">Blended cost: {formatCurrency(blendedCostPerLiter)}/L</div>
                         </div>
                     </div>
 
@@ -596,7 +596,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                                     {entry.type === 'deposit' ? '+' : '-'}{entry.liters.toLocaleString()} L
                                                 </td>
                                                 <td className="px-6 py-3.5 text-sm text-gray-600 text-right whitespace-nowrap">
-                                                    ₦{entry.cost.toLocaleString()}
+                                                    {formatCurrency(entry.cost)}
                                                 </td>
                                                 <td className={cn(
                                                     "px-6 py-3.5 text-sm font-bold text-right whitespace-nowrap",

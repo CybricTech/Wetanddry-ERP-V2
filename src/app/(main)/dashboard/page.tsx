@@ -9,6 +9,7 @@ import {
     TrendingUp, Activity, ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
+import { formatCurrency } from '@/lib/utils';
 
 // Dashboard data refreshes every 30 seconds
 export const revalidate = 30;
@@ -66,7 +67,7 @@ export default async function Dashboard() {
                 />
                 <DashboardCard
                     title="Fuel Cost (Total)"
-                    value={`₦${(totalFuelCost / 1000).toFixed(1)}k`}
+                    value={formatCurrency(totalFuelCost)}
                     subtext="Lifetime expenditure"
                     icon={<Droplet className="text-green-600" />}
                     color="bg-green-50"
@@ -161,9 +162,9 @@ export default async function Dashboard() {
                                         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                                             <div
                                                 className={`h-full rounded-full transition-all duration-500 ${silo.status === 'Low' ? 'bg-red-500' :
-                                                        silo.status === 'High' ? 'bg-amber-500' :
-                                                            silo.status === 'Empty' ? 'bg-gray-300' :
-                                                                'bg-blue-600'
+                                                    silo.status === 'High' ? 'bg-amber-500' :
+                                                        silo.status === 'Empty' ? 'bg-gray-300' :
+                                                            'bg-blue-600'
                                                     }`}
                                                 style={{ width: `${Math.min(100, silo.percentage)}%` }}
                                             />

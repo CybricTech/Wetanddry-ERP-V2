@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
 import { checkAndActivateOrder } from './orders'
+import { formatCurrency } from '@/lib/utils'
 
 // ==================== PAYMENT RECORDING ====================
 
@@ -194,7 +195,7 @@ export async function applyPrepaymentToOrder(formData: FormData) {
 
     // Check client has enough wallet balance
     if (order.client.walletBalance < amount) {
-        throw new Error(`Insufficient wallet balance. Available: ₦${order.client.walletBalance.toLocaleString()}`)
+        throw new Error(`Insufficient wallet balance. Available: ${formatCurrency(order.client.walletBalance)}`)
     }
 
     await prisma.$transaction(async (tx) => {
@@ -324,7 +325,7 @@ export async function createPaymentSchedule(formData: FormData) {
     // Validate schedule total matches order total
     const scheduleTotal = schedule.reduce((sum, item) => sum + item.amount, 0)
     if (Math.abs(scheduleTotal - order.totalAmount) > 0.01) {
-        throw new Error(`Schedule total (₦${scheduleTotal.toLocaleString()}) must match order total (₦${order.totalAmount.toLocaleString()})`)
+        throw new Error(`Schedule total (${formatCurrency(scheduleTotal)}) must match order total (${formatCurrency(order.totalAmount)})`)
     }
 
     // Delete existing schedule items and create new ones
