@@ -1,5 +1,5 @@
 import React from 'react';
-import { getInventoryStats, getStorageLocations, getAllStockTransactions, getPendingApprovals, seedInitialInventory } from '@/lib/actions/inventory';
+import { getInventoryStats, getStorageLocations, getAllStockTransactions, getPendingApprovals } from '@/lib/actions/inventory';
 import InventoryClient from '@/components/inventory/InventoryClient';
 import { auth } from '@/auth';
 
@@ -20,11 +20,6 @@ export default async function InventoryPage() {
     ]);
 
     const { items, totalItems, lowStockItems, totalValue, expiringItems, siloStats } = inventoryStats;
-
-    // Seed initial data if empty
-    if (totalItems === 0) {
-        await seedInitialInventory();
-    }
 
     return (
         <InventoryClient
