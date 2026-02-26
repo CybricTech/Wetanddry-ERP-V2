@@ -8,10 +8,10 @@ async function main() {
 
     // Super Admin
     await prisma.user.upsert({
-        where: { email: 'admin@wetndry.com' },
+        where: { email: 'admin@wetanddry.ng' },
         update: {},
         create: {
-            email: 'admin@wetndry.com',
+            email: 'admin@wetanddry.ng',
             name: 'Super Admin',
             password: hashedPassword,
             role: 'Super Admin',

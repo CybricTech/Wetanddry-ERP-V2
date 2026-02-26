@@ -21,7 +21,7 @@ export default function LoginForm() {
                         id="email"
                         type="email"
                         name="email"
-                        placeholder="admin@wetndry.com"
+                        placeholder="Enter your email"
                         required
                     />
                 </div>
@@ -66,9 +66,7 @@ export default function LoginForm() {
                 )}
             </button>
 
-            <div className="text-center text-sm text-gray-500">
-                Demo: admin@wetndry.com / password123
-            </div>
+
         </form>
     );
 }
