@@ -9,7 +9,7 @@ interface EditTruckModalProps {
         id: string
         plateNumber: string
         model: string
-        capacity: string
+        capacity: string | null
         status: string
         purchaseDate: Date
         mileage: number
@@ -102,7 +102,7 @@ export default function EditTruckModal({ truck, onClose }: EditTruckModalProps) 
                             <select
                                 name="capacity"
                                 required
-                                defaultValue={truck.capacity}
+                                defaultValue={truck.capacity || ''}
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                             >
                                 <option value="">Select capacity</option>

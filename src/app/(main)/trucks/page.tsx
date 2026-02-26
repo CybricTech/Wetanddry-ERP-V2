@@ -225,7 +225,7 @@ export default async function TrucksPage() {
                                         <span className="text-gray-500 flex items-center gap-2">
                                             <Gauge size={16} /> Capacity
                                         </span>
-                                        <span className="font-medium text-gray-900">{truck.capacity}</span>
+                                        <span className="font-medium text-gray-900">{truck.capacity || 'N/A'}</span>
                                     </div>
                                 </div>
 

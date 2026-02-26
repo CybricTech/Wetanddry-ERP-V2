@@ -23,7 +23,7 @@ interface TruckData {
     id: string
     plateNumber: string
     model: string
-    capacity: string
+    capacity: string | null
     status: string
     purchaseDate: Date
     mileage: number
