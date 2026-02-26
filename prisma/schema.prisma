@@ -18,7 +18,7 @@ model Truck {
   id              String    @id @default(cuid())
   plateNumber     String    @unique
   model           String
-  capacity        String    // e.g., "8m³"
+  capacity        String?   // e.g., "8m³"
   status          String    @default("Available") // Available, In Use, Maintenance
   purchaseDate    DateTime
   mileage         Int       @default(0)

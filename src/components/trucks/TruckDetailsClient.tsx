@@ -190,7 +190,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                                     {truck.status}
                                 </span>
                                 <span className="flex items-center gap-1.5 text-sm text-gray-600">
-                                    <Gauge size={16} /> {truck.capacity}
+                                    <Gauge size={16} /> {truck.capacity || 'N/A'}
                                 </span>
                                 <span className="flex items-center gap-1.5 text-sm text-gray-600">
                                     <MapPin size={16} /> {truck.mileage.toLocaleString()} km
@@ -316,7 +316,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                             </div>
                             <div className="flex justify-between py-2 border-b border-gray-100">
                                 <span className="text-gray-600">Capacity</span>
-                                <span className="font-medium text-gray-900">{truck.capacity}</span>
+                                <span className="font-medium text-gray-900">{truck.capacity || 'N/A'}</span>
                             </div>
                             <div className="flex justify-between py-2 border-b border-gray-100">
                                 <span className="text-gray-600">Purchase Date</span>

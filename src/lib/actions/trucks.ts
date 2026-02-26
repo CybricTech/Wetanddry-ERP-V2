@@ -22,7 +22,7 @@ export async function createTruck(formData: FormData) {
     const mileage = formData.get('mileage') as string
     const status = formData.get('status') as string
 
-    if (!plateNumber || !model || !capacity || !purchaseDate) {
+    if (!plateNumber || !model || !purchaseDate) {
         throw new Error('Missing required fields')
     }
 
@@ -35,7 +35,7 @@ export async function createTruck(formData: FormData) {
             plateNumber,
             model,
 
-            capacity,
+            capacity: capacity || null,
             purchaseDate: new Date(purchaseDate),
             mileage: parseInt(mileage) || 0,
             status: status || 'Available',
@@ -104,7 +104,7 @@ export async function updateTruck(id: string, formData: FormData) {
             plateNumber,
             model,
 
-            capacity,
+            capacity: capacity || null,
             purchaseDate: new Date(purchaseDate),
             mileage: parseInt(mileage) || 0,
             status,
