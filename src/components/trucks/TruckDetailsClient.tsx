@@ -12,11 +12,12 @@ import AddMaintenanceModal from './AddMaintenanceModal'
 import ScheduleMaintenanceModal from './ScheduleMaintenanceModal'
 import AddPartModal from './AddPartModal'
 import AddDocumentModal from './AddDocumentModal'
+import EditTruckModal from './EditTruckModal'
 import DocumentViewerModal from '@/components/shared/DocumentViewerModal'
 import { deleteTruckDocument } from '@/lib/actions/trucks'
 import { FileText, Trash2, Eye } from 'lucide-react'
 import { usePermissions } from '@/hooks/use-permissions'
-import { hasPermission, Permission } from '@/lib/permissions'
+import { hasPermission, Permission, Role } from '@/lib/permissions'
 
 interface TruckData {
     id: string
@@ -92,6 +93,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
     const [showScheduleModal, setShowScheduleModal] = useState(false)
     const [showPartModal, setShowPartModal] = useState(false)
     const [showDocumentModal, setShowDocumentModal] = useState(false)
+    const [showEditModal, setShowEditModal] = useState(false)
     const [viewingDocument, setViewingDocument] = useState<{ id: string; name: string } | null>(null)
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
     const { can: clientCan } = usePermissions()
@@ -197,24 +199,35 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                         </div>
                     </div>
 
-                    {can('manage_maintenance') && (
-                        <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-3">
+                        {userRole === Role.SUPER_ADMIN && (
                             <button
-                                onClick={() => setShowScheduleModal(true)}
-                                className="px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 flex items-center gap-2 text-gray-700 font-medium transition-all"
+                                onClick={() => setShowEditModal(true)}
+                                className="px-4 py-2.5 border border-blue-200 rounded-xl hover:bg-blue-50 flex items-center gap-2 text-blue-700 font-medium transition-all"
                             >
-                                <CalendarClock size={18} />
-                                Schedule Maintenance
+                                <Edit size={18} />
+                                Edit Truck
                             </button>
-                            <button
-                                onClick={() => setShowMaintenanceModal(true)}
-                                className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 font-medium shadow-lg shadow-blue-500/25 transition-all"
-                            >
-                                <Plus size={18} />
-                                Add Record
-                            </button>
-                        </div>
-                    )}
+                        )}
+                        {can('manage_maintenance') && (
+                            <>
+                                <button
+                                    onClick={() => setShowScheduleModal(true)}
+                                    className="px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 flex items-center gap-2 text-gray-700 font-medium transition-all"
+                                >
+                                    <CalendarClock size={18} />
+                                    Schedule Maintenance
+                                </button>
+                                <button
+                                    onClick={() => setShowMaintenanceModal(true)}
+                                    className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 font-medium shadow-lg shadow-blue-500/25 transition-all"
+                                >
+                                    <Plus size={18} />
+                                    Add Record
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -696,6 +709,12 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
             )}
 
             {/* Modals */}
+            {showEditModal && (
+                <EditTruckModal
+                    truck={truck}
+                    onClose={() => setShowEditModal(false)}
+                />
+            )}
             {showMaintenanceModal && (
                 <AddMaintenanceModal
                     truckId={truck.id}
