@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Download, ExternalLink, FileText, Loader2 } from 'lucide-react'
 
 interface DocumentViewerModalProps {
@@ -19,9 +19,59 @@ function getFileType(name: string): 'image' | 'pdf' | 'other' {
 export default function DocumentViewerModal({ documentId, name, onClose }: DocumentViewerModalProps) {
     const [isLoading, setIsLoading] = useState(true)
     const [hasError, setHasError] = useState(false)
+    const [blobUrl, setBlobUrl] = useState<string | null>(null)
 
     const proxyUrl = `/api/documents/${documentId}`
     const fileType = getFileType(name)
+
+    // Fetch document as blob and create object URL to avoid download triggers
+    useEffect(() => {
+        let cancelled = false
+        const controller = new AbortController()
+
+        async function fetchDocument() {
+            try {
+                const resp = await fetch(proxyUrl, { signal: controller.signal })
+                if (!resp.ok) throw new Error('Failed to fetch')
+
+                const blob = await resp.blob()
+                if (cancelled) return
+
+                // Force correct MIME type for PDFs if server returned octet-stream
+                let finalBlob = blob
+                if (fileType === 'pdf' && blob.type === 'application/octet-stream') {
+                    finalBlob = new Blob([blob], { type: 'application/pdf' })
+                }
+
+                const url = URL.createObjectURL(finalBlob)
+                setBlobUrl(url)
+                setIsLoading(false)
+            } catch {
+                if (!cancelled) {
+                    setIsLoading(false)
+                    setHasError(true)
+                }
+            }
+        }
+
+        fetchDocument()
+
+        return () => {
+            cancelled = true
+            controller.abort()
+            if (blobUrl) URL.revokeObjectURL(blobUrl)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [proxyUrl, fileType])
+
+    const handleDownload = () => {
+        const a = document.createElement('a')
+        a.href = proxyUrl
+        a.download = name
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+    }
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -38,23 +88,24 @@ export default function DocumentViewerModal({ documentId, name, onClose }: Docum
                         <h2 className="text-lg font-semibold text-gray-900 truncate">{name}</h2>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                        <a
-                            href={proxyUrl}
-                            download={name}
+                        <button
+                            onClick={handleDownload}
                             className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Download"
                         >
                             <Download size={18} />
-                        </a>
-                        <a
-                            href={proxyUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Open in new tab"
-                        >
-                            <ExternalLink size={18} />
-                        </a>
+                        </button>
+                        {blobUrl && (
+                            <a
+                                href={blobUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Open in new tab"
+                            >
+                                <ExternalLink size={18} />
+                            </a>
+                        )}
                         <button
                             onClick={onClose}
                             className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
@@ -88,22 +139,18 @@ export default function DocumentViewerModal({ documentId, name, onClose }: Docum
                         </div>
                     )}
 
-                    {fileType === 'image' && !hasError && (
+                    {blobUrl && fileType === 'image' && !hasError && (
                         <img
-                            src={proxyUrl}
+                            src={blobUrl}
                             alt={name}
-                            className={`max-w-full mx-auto rounded-lg ${isLoading ? 'hidden' : ''}`}
-                            onLoad={() => setIsLoading(false)}
-                            onError={() => { setIsLoading(false); setHasError(true) }}
+                            className="max-w-full mx-auto rounded-lg"
                         />
                     )}
 
-                    {(fileType === 'pdf' || fileType === 'other') && !hasError && (
+                    {blobUrl && (fileType === 'pdf' || fileType === 'other') && !hasError && (
                         <iframe
-                            src={proxyUrl}
-                            className={`w-full h-[70vh] rounded-lg border border-gray-200 ${isLoading ? 'hidden' : ''}`}
-                            onLoad={() => setIsLoading(false)}
-                            onError={() => { setIsLoading(false); setHasError(true) }}
+                            src={blobUrl}
+                            className="w-full h-[70vh] rounded-lg border border-gray-200"
                             title={name}
                         />
                     )}
