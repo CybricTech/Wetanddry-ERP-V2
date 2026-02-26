@@ -8,7 +8,7 @@ import {
     Plus, ChevronDown, Clock, CheckCircle2, XCircle, Warehouse, FlaskConical,
     Calendar, DollarSign, Layers, Settings, Eye, Edit, Trash2, X, Loader2,
     AlertCircle, TrendingUp, TrendingDown, BarChart3, History, FileText, Save,
-    Container, ClipboardList, Lock
+    Container, ClipboardList, Lock, MapPin
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import ActivityTab, { PendingApproval, StockTransaction } from './ActivityTab';
@@ -101,7 +101,7 @@ export default function InventoryClient({
     currentUser,
     userRole
 }: InventoryClientProps) {
-    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'containers' | 'activity' | 'expiring'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'containers' | 'locations' | 'activity' | 'expiring'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [showStockModal, setShowStockModal] = useState(false);
@@ -190,15 +190,6 @@ export default function InventoryClient({
                             Stock Out
                         </button>
                     )}
-                    {can('manage_inventory') && (
-                        <button
-                            onClick={() => setShowLocationsModal(true)}
-                            className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 font-medium shadow-lg shadow-amber-500/25 flex items-center gap-2 transition-all"
-                        >
-                            <Settings size={20} />
-                            Storage Locations
-                        </button>
-                    )}
                     {can('create_material_requests') && (
                         <button
                             onClick={() => setShowRequestModal(true)}
@@ -260,6 +251,7 @@ export default function InventoryClient({
                         { id: 'items', label: 'All Items', icon: <Package size={18} /> },
                         { id: 'silos', label: 'Silo Management', icon: <Database size={18} /> },
                         { id: 'containers', label: 'Container Storage', icon: <Container size={18} /> },
+                        { id: 'locations', label: 'Storage Locations', icon: <Warehouse size={18} /> },
                         { id: 'activity', label: `Activity ${pendingCounts.total > 0 ? `(${pendingCounts.total})` : ''}`, icon: <History size={18} /> },
                         { id: 'expiring', label: 'Expiring Items', icon: <AlertCircle size={18} /> }
                     ].map(tab => (
@@ -754,6 +746,80 @@ export default function InventoryClient({
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'locations' && (
+                <div className="space-y-6">
+                    {/* Storage Locations Header */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">Storage Locations</h3>
+                            <p className="text-sm text-gray-500 mt-1">Configure and manage storage locations for inventory</p>
+                        </div>
+                        {can('manage_inventory') && (
+                            <button
+                                onClick={() => setShowLocationsModal(true)}
+                                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 font-medium shadow-lg shadow-amber-500/25 flex items-center gap-2 transition-all"
+                            >
+                                <Settings size={18} />
+                                Configure Locations
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Locations Grid */}
+                    {locations.length === 0 ? (
+                        <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+                            <Warehouse size={48} className="mx-auto text-gray-300 mb-4" />
+                            <h4 className="text-lg font-medium text-gray-600">No Storage Locations Configured</h4>
+                            <p className="text-sm text-gray-400 mt-1">Add your first storage location to organize your inventory</p>
+                            {can('manage_inventory') && (
+                                <button
+                                    onClick={() => setShowLocationsModal(true)}
+                                    className="mt-4 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg font-medium hover:bg-amber-200 transition-colors"
+                                >
+                                    Add Location
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                            {locations.map(loc => {
+                                const itemCount = items.filter(i => i.location.id === loc.id).length;
+                                return (
+                                    <div key={loc.id} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    "w-12 h-12 rounded-xl flex items-center justify-center",
+                                                    loc.type === 'Silo' ? "bg-blue-100" :
+                                                        loc.type === 'Container' ? "bg-teal-100" :
+                                                            loc.type === 'Warehouse' ? "bg-amber-100" : "bg-gray-100"
+                                                )}>
+                                                    {loc.type === 'Silo' ? <Database size={24} className="text-blue-600" /> :
+                                                        loc.type === 'Container' ? <Container size={24} className="text-teal-600" /> :
+                                                            loc.type === 'Warehouse' ? <Warehouse size={24} className="text-amber-600" /> :
+                                                                <MapPin size={24} className="text-gray-600" />}
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-lg font-bold text-gray-900">{loc.name}</h4>
+                                                    <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{loc.type}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {loc.description && (
+                                            <p className="text-sm text-gray-500 mb-3">{loc.description}</p>
+                                        )}
+                                        <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                                            <Package size={16} />
+                                            <span className="font-medium">{itemCount}</span> item{itemCount !== 1 ? 's' : ''} stored
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </div>

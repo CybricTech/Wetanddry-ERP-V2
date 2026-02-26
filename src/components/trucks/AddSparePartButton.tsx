@@ -1,9 +1,10 @@
 'use client'
 
 import { createSparePart } from '@/lib/actions/trucks'
+import { getStorageLocations } from '@/lib/actions/inventory'
 import { Plus, X, Package } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 function SubmitButton() {
     const { pending } = useFormStatus()
@@ -18,8 +19,23 @@ function SubmitButton() {
     )
 }
 
+interface StorageLocation {
+    id: string
+    name: string
+    type: string
+}
+
 export default function AddSparePartButton() {
     const [showModal, setShowModal] = useState(false)
+    const [locations, setLocations] = useState<StorageLocation[]>([])
+
+    useEffect(() => {
+        if (showModal) {
+            getStorageLocations().then((locs) => {
+                setLocations(locs.map(l => ({ id: l.id, name: l.name, type: l.type })))
+            })
+        }
+    }, [showModal])
 
     const handleSubmit = async (formData: FormData) => {
         await createSparePart(formData)
@@ -172,12 +188,17 @@ export default function AddSparePartButton() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                         Storage Location
                                     </label>
-                                    <input
+                                    <select
                                         name="location"
-                                        type="text"
-                                        placeholder="e.g. Warehouse A, Shelf 3"
                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                    />
+                                    >
+                                        <option value="">Select location</option>
+                                        {locations.map(loc => (
+                                            <option key={loc.id} value={loc.name}>
+                                                {loc.name} ({loc.type})
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
