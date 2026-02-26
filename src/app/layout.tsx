@@ -16,13 +16,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Wet N Dry ERP",
-  description: "Enterprise Resource Planning for Wet N Dry Concrete Batching Operations",
+  title: "Wetanddry ERP",
+  description: "Enterprise Resource Planning for Wetanddry Concrete Batching Operations",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "WetDry ERP",
+    title: "Wetanddry ERP",
   },
 };
 

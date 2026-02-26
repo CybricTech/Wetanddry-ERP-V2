@@ -5,7 +5,7 @@ import { hasPermission } from '@/lib/permissions';
 import FinanceClient from './FinanceClient';
 
 export const metadata: Metadata = {
-    title: 'Finance & Reports | Wet N Dry ERP',
+    title: 'Finance & Reports | Wetanddry ERP',
     description: 'Company-wide financial overview and reports',
 };
 
