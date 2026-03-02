@@ -1753,7 +1753,7 @@ export async function getPendingApprovals() {
 
 export interface AuditLogFilters {
     search?: string;
-    activityType?: 'stock_in' | 'stock_out' | 'adjustment' | 'item_created' | 'item_approved' | 'production' | 'all';
+    activityType?: 'stock_in' | 'stock_out' | 'adjustment' | 'item_created' | 'item_approved' | 'item_rejected' | 'production' | 'all';
     startDate?: Date;
     endDate?: Date;
     page?: number;
@@ -1778,16 +1778,24 @@ export async function getAuditLogs(filters: AuditLogFilters = {}) {
 
     // Fetch from multiple sources based on activity type
     const fetchTransactions = activityType === 'all' || ['stock_in', 'stock_out', 'adjustment'].includes(activityType)
-    const fetchItems = activityType === 'all' || ['item_created', 'item_approved'].includes(activityType)
+    const fetchItems = activityType === 'all' || ['item_created', 'item_approved', 'item_rejected'].includes(activityType)
     const fetchProduction = activityType === 'all' || activityType === 'production'
+
+    // Map activity type to transaction type
+    const transactionTypeMap: Record<string, string> = {
+        'stock_in': 'IN',
+        'stock_out': 'OUT',
+        'adjustment': 'ADJUSTMENT'
+    }
+    const transactionTypeFilter = transactionTypeMap[activityType]
+
+    const hasDateFilter = Object.keys(dateFilter).length > 0
 
     const [transactions, items, productionRuns] = await Promise.all([
         fetchTransactions ? prisma.stockTransaction.findMany({
             where: {
-                ...(activityType !== 'all' && activityType !== 'stock_in' && activityType !== 'stock_out' && activityType !== 'adjustment' ? {} : {
-                    type: activityType === 'stock_in' ? 'IN' : activityType === 'stock_out' ? 'OUT' : activityType === 'adjustment' ? 'ADJUSTMENT' : undefined
-                }),
-                ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
+                ...(transactionTypeFilter ? { type: transactionTypeFilter } : {}),
+                ...(hasDateFilter ? { createdAt: dateFilter } : {}),
                 ...(search ? {
                     OR: [
                         { item: { is: { name: { contains: search } } } },
@@ -1797,13 +1805,19 @@ export async function getAuditLogs(filters: AuditLogFilters = {}) {
                 } : {})
             },
             include: { item: { include: { location: true } } },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            take: limit * 3
         }) : [],
         fetchItems ? prisma.inventoryItem.findMany({
             where: {
-                status: { in: ['Active', 'Rejected'] },
-                approvedAt: { not: null },
-                ...(Object.keys(dateFilter).length > 0 ? { approvedAt: dateFilter } : {}),
+                AND: [
+                    { status: { in: ['Active', 'Rejected'] } },
+                    { approvedAt: { not: null } },
+                    ...(hasDateFilter ? [{ approvedAt: dateFilter }] : []),
+                    // Filter by specific item status when filtering by type
+                    ...(activityType === 'item_approved' ? [{ status: 'Active' }] : []),
+                    ...(activityType === 'item_rejected' ? [{ status: 'Rejected' }] : []),
+                ],
                 ...(search ? {
                     OR: [
                         { name: { contains: search } },
@@ -1813,11 +1827,12 @@ export async function getAuditLogs(filters: AuditLogFilters = {}) {
                 } : {})
             },
             include: { location: true },
-            orderBy: { approvedAt: 'desc' }
+            orderBy: { approvedAt: 'desc' },
+            take: limit * 3
         }) : [],
         fetchProduction ? prisma.productionRun.findMany({
             where: {
-                ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
+                ...(hasDateFilter ? { createdAt: dateFilter } : {}),
                 ...(search ? {
                     OR: [
                         { recipe: { is: { name: { contains: search } } } },
@@ -1829,7 +1844,8 @@ export async function getAuditLogs(filters: AuditLogFilters = {}) {
                 recipe: true,
                 silo: true
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            take: limit * 3
         }) : []
     ])
 
@@ -1862,7 +1878,7 @@ export async function getAuditLogs(filters: AuditLogFilters = {}) {
         })),
         ...items.map(i => ({
             id: `item-${i.id}`,
-            activityType: i.status === 'Active' ? 'item_approved' : 'item_created' as const,
+            activityType: (i.status === 'Active' ? 'item_approved' : 'item_rejected') as string,
             description: `${i.status === 'Active' ? 'Item Approved' : 'Item Rejected'}: ${i.name}`,
             details: {
                 itemName: i.name,

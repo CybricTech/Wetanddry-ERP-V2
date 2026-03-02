@@ -10,6 +10,7 @@ import {
     Package, FileText, History, Download, AlertCircle, Loader2, X, Eye, RefreshCw, Calendar, Radio
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
+import ApprovalConfirmationModal from '@/components/shared/ApprovalConfirmationModal';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -234,6 +235,7 @@ export default function ActivityTab({ transactions, pendingApprovals, pendingCou
 function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApprovals: PendingApproval[]; counts: PendingCounts; userRole?: string }) {
     const [isPending, startTransition] = useTransition();
     const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [confirmItem, setConfirmItem] = useState<PendingApproval | null>(null);
     const { can: clientCan } = usePermissions();
 
     // Use server-side role if available
@@ -244,7 +246,7 @@ function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApproval
         return clientCan(permission);
     };
 
-    const handleApprove = async (item: PendingApproval) => {
+    const executeApproval = async (item: PendingApproval) => {
         setActionLoading(item.id);
         startTransition(async () => {
             try {
@@ -262,8 +264,17 @@ function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApproval
                 console.error('Approval failed:', error);
             } finally {
                 setActionLoading(null);
+                setConfirmItem(null);
             }
         });
+    };
+
+    const handleApprove = async (item: PendingApproval) => {
+        if (userRole === 'Super Admin') {
+            setConfirmItem(item);
+        } else {
+            executeApproval(item);
+        }
     };
 
     const handleReject = async (item: PendingApproval) => {
@@ -466,6 +477,16 @@ function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApproval
                         </div>
                     ))}
                 </div>
+            )}
+
+            {confirmItem && (
+                <ApprovalConfirmationModal
+                    isOpen={true}
+                    onClose={() => setConfirmItem(null)}
+                    onConfirm={() => executeApproval(confirmItem)}
+                    isApproving={actionLoading === confirmItem.id}
+                    item={confirmItem}
+                />
             )}
         </div>
     );
@@ -766,6 +787,7 @@ function AuditTrailSubTab() {
         'stock_out': 'bg-blue-100 text-blue-700',
         'adjustment': 'bg-gray-100 text-gray-700',
         'item_approved': 'bg-purple-100 text-purple-700',
+        'item_rejected': 'bg-red-100 text-red-700',
         'item_created': 'bg-amber-100 text-amber-700',
         'production': 'bg-indigo-100 text-indigo-700'
     };
@@ -775,6 +797,7 @@ function AuditTrailSubTab() {
         'stock_out': 'Stock Out',
         'adjustment': 'Adjustment',
         'item_approved': 'Item Approved',
+        'item_rejected': 'Item Rejected',
         'item_created': 'Item Created',
         'production': 'Production'
     };
@@ -812,6 +835,7 @@ function AuditTrailSubTab() {
                             <option value="stock_out">Stock Out</option>
                             <option value="adjustment">Adjustments</option>
                             <option value="item_approved">Item Approvals</option>
+                            <option value="item_rejected">Item Rejections</option>
                             <option value="production">Production</option>
                         </select>
 

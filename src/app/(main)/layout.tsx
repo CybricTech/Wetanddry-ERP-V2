@@ -2,6 +2,7 @@ import React from 'react';
 import { Sidebar } from '@/components/Layout/Sidebar';
 import { Header } from '@/components/Layout/Header';
 import { auth } from '@/auth';
+import NotificationToastProvider from '@/components/notifications/NotificationToastProvider';
 
 // Allow caching but revalidate session every 60 seconds
 // Session cookies are still checked on each request by NextAuth middleware
@@ -23,6 +24,7 @@ export default async function DashboardLayout({
                     {children}
                 </main>
             </div>
+            <NotificationToastProvider />
         </div>
     );
 }

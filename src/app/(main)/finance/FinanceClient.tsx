@@ -57,8 +57,12 @@ interface Expense {
 export default function FinanceClient({ currentUser, userRole }: { currentUser: string; userRole: string }) {
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState<'overview' | 'inventory' | 'fuel' | 'maintenance' | 'expenses'>('overview');
-    const [fuelPeriod, setFuelPeriod] = useState<'7days' | '30days' | '90days'>('30days');
-    const [maintenancePeriod, setMaintenancePeriod] = useState<'30days' | '90days' | 'year'>('30days');
+    const [fuelPeriod, setFuelPeriod] = useState<'7days' | '30days' | '90days' | 'custom'>('30days');
+    const [maintenancePeriod, setMaintenancePeriod] = useState<'30days' | '90days' | 'year' | 'custom'>('30days');
+    const [fuelCustomStart, setFuelCustomStart] = useState('');
+    const [fuelCustomEnd, setFuelCustomEnd] = useState('');
+    const [maintenanceCustomStart, setMaintenanceCustomStart] = useState('');
+    const [maintenanceCustomEnd, setMaintenanceCustomEnd] = useState('');
     const [isExporting, setIsExporting] = useState(false);
 
     // Data states
@@ -78,8 +82,11 @@ export default function FinanceClient({ currentUser, userRole }: { currentUser: 
     const canApproveExpenses = userRole ? ['Super Admin', 'Manager'].includes(userRole) : false;
 
     useEffect(() => {
+        // Only load custom data when both dates are set
+        if (fuelPeriod === 'custom' && (!fuelCustomStart || !fuelCustomEnd) && activeView === 'fuel') return;
+        if (maintenancePeriod === 'custom' && (!maintenanceCustomStart || !maintenanceCustomEnd) && activeView === 'maintenance') return;
         loadData();
-    }, [activeView, fuelPeriod, maintenancePeriod]);
+    }, [activeView, fuelPeriod, maintenancePeriod, fuelCustomStart, fuelCustomEnd, maintenanceCustomStart, maintenanceCustomEnd]);
 
     useEffect(() => {
         if (activeView === 'expenses') {
@@ -100,11 +107,19 @@ export default function FinanceClient({ currentUser, userRole }: { currentUser: 
                 setInventoryData(data);
             } else if (activeView === 'fuel') {
                 const { getFuelCostBreakdown } = await import('@/lib/actions/finance');
-                const data = await getFuelCostBreakdown(fuelPeriod);
+                const data = await getFuelCostBreakdown(
+                    fuelPeriod,
+                    fuelPeriod === 'custom' ? fuelCustomStart : undefined,
+                    fuelPeriod === 'custom' ? fuelCustomEnd : undefined
+                );
                 setFuelData(data);
             } else if (activeView === 'maintenance') {
                 const { getMaintenanceCostBreakdown } = await import('@/lib/actions/finance');
-                const data = await getMaintenanceCostBreakdown(maintenancePeriod);
+                const data = await getMaintenanceCostBreakdown(
+                    maintenancePeriod,
+                    maintenancePeriod === 'custom' ? maintenanceCustomStart : undefined,
+                    maintenancePeriod === 'custom' ? maintenanceCustomEnd : undefined
+                );
                 setMaintenanceData(data);
             } else if (activeView === 'expenses') {
                 await loadExpenses();
@@ -322,12 +337,12 @@ export default function FinanceClient({ currentUser, userRole }: { currentUser: 
 
                     {/* Fuel View */}
                     {activeView === 'fuel' && fuelData && (
-                        <FuelView data={fuelData} period={fuelPeriod} setPeriod={setFuelPeriod} />
+                        <FuelView data={fuelData} period={fuelPeriod} setPeriod={setFuelPeriod} customStart={fuelCustomStart} customEnd={fuelCustomEnd} setCustomStart={setFuelCustomStart} setCustomEnd={setFuelCustomEnd} />
                     )}
 
                     {/* Maintenance View */}
                     {activeView === 'maintenance' && maintenanceData && (
-                        <MaintenanceView data={maintenanceData} period={maintenancePeriod} setPeriod={setMaintenancePeriod} />
+                        <MaintenanceView data={maintenanceData} period={maintenancePeriod} setPeriod={setMaintenancePeriod} customStart={maintenanceCustomStart} customEnd={maintenanceCustomEnd} setCustomStart={setMaintenanceCustomStart} setCustomEnd={setMaintenanceCustomEnd} />
                     )}
 
                     {/* Expenses View */}
@@ -622,18 +637,22 @@ function InventoryView({ data }: { data: any }) {
 
 // ==================== FUEL VIEW ====================
 
-function FuelView({ data, period, setPeriod }: { data: any; period: string; setPeriod: (p: any) => void }) {
+function FuelView({ data, period, setPeriod, customStart, customEnd, setCustomStart, setCustomEnd }: {
+    data: any; period: string; setPeriod: (p: any) => void;
+    customStart: string; customEnd: string; setCustomStart: (v: string) => void; setCustomEnd: (v: string) => void;
+}) {
     const maxDailyValue = Math.max(...(data.dailyData?.map((d: any) => d.cost) || [1]), 1);
 
     return (
         <div className="space-y-6">
             {/* Period Selector */}
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-3">
                 <div className="flex bg-gray-100 rounded-xl p-1">
                     {[
                         { value: '7days', label: '7 Days' },
                         { value: '30days', label: '30 Days' },
-                        { value: '90days', label: '90 Days' }
+                        { value: '90days', label: '90 Days' },
+                        { value: 'custom', label: 'Custom' }
                     ].map(opt => (
                         <button
                             key={opt.value}
@@ -649,6 +668,23 @@ function FuelView({ data, period, setPeriod }: { data: any; period: string; setP
                         </button>
                     ))}
                 </div>
+                {period === 'custom' && (
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="date"
+                            value={customStart}
+                            onChange={(e) => setCustomStart(e.target.value)}
+                            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:border-amber-500 outline-none"
+                        />
+                        <span className="text-gray-400 text-sm">to</span>
+                        <input
+                            type="date"
+                            value={customEnd}
+                            onChange={(e) => setCustomEnd(e.target.value)}
+                            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:border-amber-500 outline-none"
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Summary */}
@@ -738,16 +774,20 @@ function FuelView({ data, period, setPeriod }: { data: any; period: string; setP
 
 // ==================== MAINTENANCE VIEW ====================
 
-function MaintenanceView({ data, period, setPeriod }: { data: any; period: string; setPeriod: (p: any) => void }) {
+function MaintenanceView({ data, period, setPeriod, customStart, customEnd, setCustomStart, setCustomEnd }: {
+    data: any; period: string; setPeriod: (p: any) => void;
+    customStart: string; customEnd: string; setCustomStart: (v: string) => void; setCustomEnd: (v: string) => void;
+}) {
     return (
         <div className="space-y-6">
             {/* Period Selector */}
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-3">
                 <div className="flex bg-gray-100 rounded-xl p-1">
                     {[
                         { value: '30days', label: '30 Days' },
                         { value: '90days', label: '90 Days' },
-                        { value: 'year', label: '1 Year' }
+                        { value: 'year', label: '1 Year' },
+                        { value: 'custom', label: 'Custom' }
                     ].map(opt => (
                         <button
                             key={opt.value}
@@ -763,6 +803,23 @@ function MaintenanceView({ data, period, setPeriod }: { data: any; period: strin
                         </button>
                     ))}
                 </div>
+                {period === 'custom' && (
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="date"
+                            value={customStart}
+                            onChange={(e) => setCustomStart(e.target.value)}
+                            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:border-purple-500 outline-none"
+                        />
+                        <span className="text-gray-400 text-sm">to</span>
+                        <input
+                            type="date"
+                            value={customEnd}
+                            onChange={(e) => setCustomEnd(e.target.value)}
+                            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:border-purple-500 outline-none"
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Summary */}

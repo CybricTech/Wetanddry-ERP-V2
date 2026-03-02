@@ -14,7 +14,7 @@ import AddPartModal from './AddPartModal'
 import AddDocumentModal from './AddDocumentModal'
 import EditTruckModal from './EditTruckModal'
 import DocumentViewerModal from '@/components/shared/DocumentViewerModal'
-import { deleteTruckDocument } from '@/lib/actions/trucks'
+import { deleteTruckDocument, deleteTruck } from '@/lib/actions/trucks'
 import { FileText, Trash2, Eye } from 'lucide-react'
 import { usePermissions } from '@/hooks/use-permissions'
 import { hasPermission, Permission, Role } from '@/lib/permissions'
@@ -95,6 +95,8 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
     const [showDocumentModal, setShowDocumentModal] = useState(false)
     const [showEditModal, setShowEditModal] = useState(false)
     const [viewingDocument, setViewingDocument] = useState<{ id: string; name: string } | null>(null)
+    const [showDeleteModal, setShowDeleteModal] = useState(false)
+    const [isDeleting, setIsDeleting] = useState(false)
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
     const { can: clientCan } = usePermissions()
 
@@ -201,13 +203,22 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
 
                     <div className="flex flex-wrap gap-3">
                         {userRole === Role.SUPER_ADMIN && (
-                            <button
-                                onClick={() => setShowEditModal(true)}
-                                className="px-4 py-2.5 border border-blue-200 rounded-xl hover:bg-blue-50 flex items-center gap-2 text-blue-700 font-medium transition-all"
-                            >
-                                <Edit size={18} />
-                                Edit Truck
-                            </button>
+                            <>
+                                <button
+                                    onClick={() => setShowEditModal(true)}
+                                    className="px-4 py-2.5 border border-blue-200 rounded-xl hover:bg-blue-50 flex items-center gap-2 text-blue-700 font-medium transition-all"
+                                >
+                                    <Edit size={18} />
+                                    Edit Truck
+                                </button>
+                                <button
+                                    onClick={() => setShowDeleteModal(true)}
+                                    className="px-4 py-2.5 border border-red-200 rounded-xl hover:bg-red-50 flex items-center gap-2 text-red-700 font-medium transition-all"
+                                >
+                                    <Trash2 size={18} />
+                                    Delete Truck
+                                </button>
+                            </>
                         )}
                         {can('manage_maintenance') && (
                             <>
@@ -748,6 +759,47 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                     name={viewingDocument.name}
                     onClose={() => setViewingDocument(null)}
                 />
+            )}
+            {showDeleteModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-xl scale-100 animate-in zoom-in-95 duration-200">
+                        <div className="p-6 text-center">
+                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle className="text-red-600" size={24} />
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-900 mb-2">
+                                Delete Truck
+                            </h2>
+                            <p className="text-gray-600 mb-6">
+                                Are you sure you want to permanently delete truck <strong>{truck.plateNumber}</strong>? All maintenance records, documents, parts, and schedules will be permanently removed. This action cannot be undone.
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowDeleteModal(false)}
+                                    disabled={isDeleting}
+                                    className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                >
+                                    No, Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        setIsDeleting(true)
+                                        try {
+                                            await deleteTruck(truck.id)
+                                        } catch (error) {
+                                            console.error('Failed to delete truck:', error)
+                                            setIsDeleting(false)
+                                        }
+                                    }}
+                                    disabled={isDeleting}
+                                    className="flex-1 px-4 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 shadow-lg shadow-red-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                                >
+                                    {isDeleting ? 'Deleting...' : 'Yes, Delete Truck'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     )

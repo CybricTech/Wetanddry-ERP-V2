@@ -833,3 +833,23 @@ model ProductionMaterialUsage {
   @@index([productionRunId])
   @@index([inventoryItemId])
 }
+
+// Duplicate Alert System
+
+model DuplicateAlert {
+  id           String    @id @default(cuid())
+  entityType   String    // "InventoryItem", "Client", "Staff"
+  entityId1    String
+  entityId2    String
+  field        String    // "name", "phone", "email"
+  value        String    // The duplicate value found
+  status       String    @default("Open") // "Open", "Resolved", "Ignored"
+  resolvedBy   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([entityType, entityId1, entityId2, field])
+  @@index([status])
+  @@index([entityType])
+}

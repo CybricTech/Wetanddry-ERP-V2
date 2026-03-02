@@ -198,7 +198,11 @@ export async function getInventoryBreakdown() {
 /**
  * Get fuel cost breakdown
  */
-export async function getFuelCostBreakdown(period: '7days' | '30days' | '90days' = '30days') {
+export async function getFuelCostBreakdown(
+    period: '7days' | '30days' | '90days' | 'custom' = '30days',
+    customStart?: string,
+    customEnd?: string
+) {
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
@@ -207,11 +211,21 @@ export async function getFuelCostBreakdown(period: '7days' | '30days' | '90days'
         throw new Error('Access denied')
     }
 
-    const days = period === '7days' ? 7 : period === '30days' ? 30 : 90
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    let startDate: Date
+    let endDate = new Date()
+    let days: number
+
+    if (period === 'custom' && customStart) {
+        startDate = new Date(customStart)
+        endDate = customEnd ? new Date(customEnd + 'T23:59:59.999Z') : new Date()
+        days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+    } else {
+        days = period === '7days' ? 7 : period === '30days' ? 30 : 90
+        startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    }
 
     const logs = await prisma.fuelLog.findMany({
-        where: { date: { gte: startDate } },
+        where: { date: { gte: startDate, lte: endDate } },
         include: { truck: true },
         orderBy: { date: 'desc' }
     })
@@ -229,13 +243,16 @@ export async function getFuelCostBreakdown(period: '7days' | '30days' | '90days'
         return acc
     }, {} as Record<string, { cost: number; liters: number; refills: number }>)
 
-    // Daily breakdown
+    // Daily breakdown (show up to 14 most recent days in the range)
+    const chartDays = Math.min(days, 14)
     const dailyData: { date: string; cost: number; liters: number }[] = []
-    for (let i = Math.min(days, 14) - 1; i >= 0; i--) {
-        const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000)
+    for (let i = chartDays - 1; i >= 0; i--) {
+        const date = new Date(endDate.getTime() - i * 24 * 60 * 60 * 1000)
         const dateStr = date.toISOString().split('T')[0]
-        const dayStart = new Date(date.setHours(0, 0, 0, 0))
-        const dayEnd = new Date(date.setHours(23, 59, 59, 999))
+        const dayStart = new Date(date)
+        dayStart.setHours(0, 0, 0, 0)
+        const dayEnd = new Date(date)
+        dayEnd.setHours(23, 59, 59, 999)
 
         const dayLogs = logs.filter(l =>
             new Date(l.date) >= dayStart && new Date(l.date) <= dayEnd
@@ -252,7 +269,7 @@ export async function getFuelCostBreakdown(period: '7days' | '30days' | '90days'
     const totalLiters = logs.reduce((sum, l) => sum + l.liters, 0)
 
     return {
-        period: { days, startDate, endDate: new Date() },
+        period: { days, startDate, endDate },
         summary: {
             totalCost,
             totalLiters,
@@ -276,7 +293,11 @@ export async function getFuelCostBreakdown(period: '7days' | '30days' | '90days'
 /**
  * Get maintenance cost breakdown
  */
-export async function getMaintenanceCostBreakdown(period: '30days' | '90days' | 'year' = '30days') {
+export async function getMaintenanceCostBreakdown(
+    period: '30days' | '90days' | 'year' | 'custom' = '30days',
+    customStart?: string,
+    customEnd?: string
+) {
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
@@ -285,11 +306,21 @@ export async function getMaintenanceCostBreakdown(period: '30days' | '90days' | 
         throw new Error('Access denied')
     }
 
-    const days = period === '30days' ? 30 : period === '90days' ? 90 : 365
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    let startDate: Date
+    let endDate = new Date()
+    let days: number
+
+    if (period === 'custom' && customStart) {
+        startDate = new Date(customStart)
+        endDate = customEnd ? new Date(customEnd + 'T23:59:59.999Z') : new Date()
+        days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+    } else {
+        days = period === '30days' ? 30 : period === '90days' ? 90 : 365
+        startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    }
 
     const records = await prisma.maintenanceRecord.findMany({
-        where: { date: { gte: startDate } },
+        where: { date: { gte: startDate, lte: endDate } },
         include: { truck: true },
         orderBy: { date: 'desc' }
     })
@@ -318,7 +349,7 @@ export async function getMaintenanceCostBreakdown(period: '30days' | '90days' | 
     const totalCost = records.reduce((sum, r) => sum + r.cost, 0)
 
     return {
-        period: { days, startDate, endDate: new Date() },
+        period: { days, startDate, endDate },
         summary: {
             totalCost,
             recordCount: records.length,
