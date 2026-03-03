@@ -16,6 +16,7 @@ import {
 
 export async function getInventoryStats() {
     const items = await prisma.inventoryItem.findMany({
+        where: { status: { not: 'Deleted' } },
         include: { location: true },
         orderBy: { updatedAt: 'desc' }
     })
@@ -77,7 +78,7 @@ export async function getInventoryStats() {
 export async function getStorageLocations() {
     return await prisma.storageLocation.findMany({
         include: {
-            items: true
+            items: { where: { status: { not: 'Deleted' } } }
         },
         orderBy: { name: 'asc' }
     })
@@ -106,6 +107,7 @@ export async function getExpiringItems() {
 
     return await prisma.inventoryItem.findMany({
         where: {
+            status: { not: 'Deleted' },
             expiryDate: {
                 lte: thirtyDaysFromNow,
                 gte: now
@@ -121,6 +123,7 @@ export async function getExpiredItems() {
 
     return await prisma.inventoryItem.findMany({
         where: {
+            status: { not: 'Deleted' },
             expiryDate: {
                 lt: now
             }
@@ -488,6 +491,24 @@ export async function createInventoryItem(formData: FormData) {
         }
     })
 
+    // Log initial stock as an audit trail entry (only for auto-approved items with quantity)
+    if (isAutoApproved && quantity > 0) {
+        await prisma.stockTransaction.create({
+            data: {
+                itemId: item.id,
+                type: 'IN',
+                quantity,
+                reason: `Initial stock: item created with ${quantity} ${unit}`,
+                supplierName: supplier || null,
+                batchNumber: batchNumber || null,
+                performedBy: createdBy,
+                status: 'Approved',
+                approvedBy: session.user.name || createdBy,
+                approvedAt: new Date(),
+            }
+        })
+    }
+
     // Notify approvers if item is pending
     if (status === 'Pending') {
         notifyApprovers(
@@ -517,32 +538,64 @@ export async function updateInventoryItem(id: string, formData: FormData) {
     const supplier = formData.get('supplier') as string
     const locationId = formData.get('locationId') as string
 
-    const item = await prisma.inventoryItem.findUnique({ where: { id } })
+    const item = await prisma.inventoryItem.findUnique({
+        where: { id },
+        include: { location: true }
+    })
     if (!item) throw new Error('Item not found')
 
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
     checkPermission(session.user.role, 'manage_inventory')
 
-    await prisma.inventoryItem.update({
-        where: { id },
-        data: {
-            name,
+    // Track what changed for the audit trail
+    const changes: string[] = []
+    if (name !== item.name) changes.push(`name: "${item.name}" → "${name}"`)
+    if (unitCost !== item.unitCost) changes.push(`unit cost: ${item.unitCost} → ${unitCost}`)
+    if (minThreshold !== item.minThreshold) changes.push(`min threshold: ${item.minThreshold} → ${minThreshold}`)
+    if (supplier !== (item.supplier || '')) changes.push(`supplier: "${item.supplier || ''}" → "${supplier}"`)
+    if (locationId !== item.locationId) changes.push(`location changed`)
+    if (category !== item.category) changes.push(`category: "${item.category}" → "${category}"`)
+    if (unit !== item.unit) changes.push(`unit: "${item.unit}" → "${unit}"`)
+    if (batchNumber !== (item.batchNumber || '')) changes.push(`batch: "${item.batchNumber || ''}" → "${batchNumber}"`)
 
-            sku,
-            category,
-            itemType,
-            maxCapacity,
-            unit,
-            minThreshold,
-            unitCost,
-            totalValue: item.quantity * unitCost,
-            expiryDate: expiryDate ? new Date(expiryDate) : undefined,
-            batchNumber,
-            supplier,
-            locationId
-        }
-    })
+    const performedBy = session.user.name || session.user.email || 'Unknown'
+
+    await prisma.$transaction([
+        prisma.inventoryItem.update({
+            where: { id },
+            data: {
+                name,
+                sku,
+                category,
+                itemType,
+                maxCapacity,
+                unit,
+                minThreshold,
+                unitCost,
+                totalValue: item.quantity * unitCost,
+                expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+                batchNumber,
+                supplier,
+                locationId
+            }
+        }),
+        // Log the edit as an audit trail entry (only if something actually changed)
+        ...(changes.length > 0 ? [
+            prisma.stockTransaction.create({
+                data: {
+                    itemId: id,
+                    type: 'ADJUSTMENT',
+                    quantity: 0,
+                    reason: `Item edited: ${changes.join(', ')}`,
+                    performedBy,
+                    status: 'Approved',
+                    approvedBy: performedBy,
+                    approvedAt: new Date(),
+                }
+            })
+        ] : [])
+    ])
 
     revalidatePath('/inventory')
     return { success: true }
@@ -553,12 +606,67 @@ export async function deleteInventoryItem(id: string) {
     if (!session?.user?.role) throw new Error('Unauthorized')
     checkPermission(session.user.role, 'manage_inventory')
 
-    await prisma.inventoryItem.delete({
-        where: { id }
+    // Fetch item details before deleting (for audit trail)
+    const item = await prisma.inventoryItem.findUnique({
+        where: { id },
+        include: { location: true }
     })
+    if (!item) throw new Error('Item not found')
 
-    revalidatePath('/inventory')
-    return { success: true }
+    try {
+        // Delete non-audit related records, then soft-delete the item
+        // by marking it as "Deleted" and zeroing out quantity.
+        // StockTransactions are preserved for audit trail history.
+        await prisma.$transaction([
+            prisma.materialRequest.deleteMany({ where: { itemId: id } }),
+            prisma.materialPriceHistory.deleteMany({ where: { inventoryItemId: id } }),
+            prisma.reconciliationItem.deleteMany({ where: { inventoryItemId: id } }),
+            prisma.productionMaterialUsage.deleteMany({ where: { inventoryItemId: id } }),
+            prisma.recipeIngredient.deleteMany({ where: { inventoryItemId: id } }),
+            // Log the deletion as an audit trail entry
+            prisma.stockTransaction.create({
+                data: {
+                    itemId: id,
+                    type: 'ADJUSTMENT',
+                    quantity: -item.quantity,
+                    reason: `Item deleted by ${session.user.name || session.user.email}`,
+                    performedBy: session.user.name || session.user.email || 'Unknown',
+                    status: 'Approved',
+                    approvedBy: session.user.name || session.user.email || 'Unknown',
+                    approvedAt: new Date(),
+                }
+            }),
+            // Soft-delete: mark as Deleted and zero out
+            prisma.inventoryItem.update({
+                where: { id },
+                data: {
+                    status: 'Deleted',
+                    quantity: 0,
+                    totalValue: 0,
+                    name: `[DELETED] ${item.name}`,
+                }
+            }),
+        ])
+
+        // Send notification about the deletion
+        try {
+            const { notifyByPermission } = await import('@/lib/actions/notifications')
+            await notifyByPermission('approve_inventory_items', {
+                type: 'low_stock_alert',
+                title: 'Inventory Item Deleted',
+                message: `${item.name} (${item.quantity} ${item.unit}) was deleted from ${item.location.name} by ${session.user.name || session.user.email}`,
+                priority: 'high',
+            })
+        } catch {
+            // Non-critical - don't fail the delete if notification fails
+        }
+
+        revalidatePath('/inventory')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to delete inventory item:', error)
+        throw new Error('Failed to delete inventory item. It may have related records that cannot be removed.')
+    }
 }
 
 // ==================== SILO MANAGEMENT ====================
@@ -1365,16 +1473,35 @@ export async function approveInventoryItem(itemId: string, quantity: number) {
     if (!item) throw new Error('Item not found')
     if (item.status !== 'Pending') throw new Error('Item is not pending approval')
 
-    await prisma.inventoryItem.update({
-        where: { id: itemId },
-        data: {
-            status: 'Active',
-            quantity,
-            totalValue: quantity * item.unitCost,
-            approvedBy: session.user.name,
-            approvedAt: new Date()
-        }
-    })
+    const approverName = session.user.name || session.user.email || 'Unknown'
+
+    await prisma.$transaction([
+        prisma.inventoryItem.update({
+            where: { id: itemId },
+            data: {
+                status: 'Active',
+                quantity,
+                totalValue: quantity * item.unitCost,
+                approvedBy: approverName,
+                approvedAt: new Date()
+            }
+        }),
+        // Log the approval as a stock-in transaction for audit trail
+        prisma.stockTransaction.create({
+            data: {
+                itemId,
+                type: 'IN',
+                quantity,
+                reason: `Item approved and added to inventory: ${item.name}`,
+                supplierName: item.supplier || null,
+                batchNumber: item.batchNumber || null,
+                performedBy: item.createdBy || 'Unknown',
+                status: 'Approved',
+                approvedBy: approverName,
+                approvedAt: new Date(),
+            }
+        })
+    ])
 
     // Notify the requester that their item was approved
     // Look up user by name (createdBy field stores name)
