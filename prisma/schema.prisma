@@ -146,11 +146,12 @@ model InventoryItem {
   id              String   @id @default(cuid())
   name            String
   sku             String?
-  category        String   // "Asset", "Consumable", "Equipment"
+  category        String   // "Asset", "Consumable", "Equipment", "Scraps"
   itemType        String   @default("General") // e.g., "Cement", "Aggregate", "Admixture", "General"
   quantity        Float    @default(0)
   maxCapacity     Float?   // Maximum storage capacity (for silos)
-  unit            String   // e.g., "kg", "liters", "pcs"
+  unit            String   // e.g., "kg", "liters", "pcs", "drums", "gallons"
+  literCapacity   Float?   // Liters per unit (e.g., 205 for drums, 25 for gallons)
   minThreshold    Float    @default(0)
   unitCost        Float    @default(0)  // Cost per unit
   totalValue      Float    @default(0)  // Calculated: quantity * unitCost

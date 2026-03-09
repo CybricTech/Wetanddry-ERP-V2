@@ -61,7 +61,8 @@ export async function getInventoryStats() {
         assets: items.filter(i => i.category === 'Asset'),
         consumables: items.filter(i => i.category === 'Consumable'),
         equipment: items.filter(i => i.category === 'Equipment'),
-        rawMaterials: items.filter(i => i.category === 'Raw Material')
+        rawMaterials: items.filter(i => i.category === 'Raw Material'),
+        scraps: items.filter(i => i.category === 'Scraps')
     }
 
     return {
@@ -447,6 +448,8 @@ export async function createInventoryItem(formData: FormData) {
     const quantity = parseFloat(formData.get('quantity') as string) || 0
     const maxCapacity = parseFloat(formData.get('maxCapacity') as string) || undefined
     const unit = formData.get('unit') as string
+    const literCapacityRaw = formData.get('literCapacity') as string
+    const literCapacity = literCapacityRaw ? parseFloat(literCapacityRaw) : undefined
     const minThreshold = parseFloat(formData.get('minThreshold') as string) || 0
     const unitCost = parseFloat(formData.get('unitCost') as string) || 0
     const expiryDate = formData.get('expiryDate') as string
@@ -477,6 +480,7 @@ export async function createInventoryItem(formData: FormData) {
             quantity: isAutoApproved ? quantity : 0, // Pending items don't add to inventory
             maxCapacity,
             unit,
+            literCapacity,
             minThreshold,
             unitCost,
             totalValue: isAutoApproved ? quantity * unitCost : 0,
@@ -531,6 +535,8 @@ export async function updateInventoryItem(id: string, formData: FormData) {
     const itemType = formData.get('itemType') as string
     const maxCapacity = parseFloat(formData.get('maxCapacity') as string) || undefined
     const unit = formData.get('unit') as string
+    const literCapacityRaw = formData.get('literCapacity') as string
+    const literCapacity = literCapacityRaw ? parseFloat(literCapacityRaw) : undefined
     const minThreshold = parseFloat(formData.get('minThreshold') as string) || 0
     const unitCost = parseFloat(formData.get('unitCost') as string) || 0
     const expiryDate = formData.get('expiryDate') as string
@@ -571,6 +577,7 @@ export async function updateInventoryItem(id: string, formData: FormData) {
                 itemType,
                 maxCapacity,
                 unit,
+                literCapacity: (unit === 'drums' || unit === 'gallons') ? literCapacity : null,
                 minThreshold,
                 unitCost,
                 totalValue: item.quantity * unitCost,

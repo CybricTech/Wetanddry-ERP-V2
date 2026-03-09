@@ -155,6 +155,7 @@ export default function InventoryClient({
         { name: 'Consumable', count: items.filter(i => i.category === 'Consumable').length, color: 'bg-amber-500' },
         { name: 'Equipment', count: items.filter(i => i.category === 'Equipment').length, color: 'bg-purple-500' },
         { name: 'Asset', count: items.filter(i => i.category === 'Asset').length, color: 'bg-green-500' },
+        { name: 'Scraps', count: items.filter(i => i.category === 'Scraps').length, color: 'bg-red-500' },
     ];
 
     const handleStockAction = (type: 'in' | 'out', item?: InventoryItem) => {
@@ -285,7 +286,7 @@ export default function InventoryClient({
                     {/* Category Breakdown */}
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                         <h3 className="text-lg font-bold text-gray-900 mb-6">Inventory by Category</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             {categoryBreakdown.map(cat => (
                                 <div key={cat.name} className="p-4 rounded-xl bg-gray-50 border border-gray-100">
                                     <div className="flex items-center gap-3 mb-2">
@@ -352,6 +353,7 @@ export default function InventoryClient({
                                 <option value="Consumable">Consumable</option>
                                 <option value="Equipment">Equipment</option>
                                 <option value="Asset">Asset</option>
+                                <option value="Scraps">Scraps</option>
                             </select>
                         </div>
                     </div>
@@ -1511,6 +1513,7 @@ function AddItemModal({ locations, currentUser, onClose }: {
     onClose: () => void;
 }) {
     const [isPending, startTransition] = useTransition();
+    const [selectedUnit, setSelectedUnit] = useState('');
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -1594,6 +1597,7 @@ function AddItemModal({ locations, currentUser, onClose }: {
                                     <option value="Consumable">Consumable</option>
                                     <option value="Equipment">Equipment</option>
                                     <option value="Asset">Asset</option>
+                                    <option value="Scraps">Scraps</option>
                                 </select>
                             </div>
 
@@ -1659,6 +1663,8 @@ function AddItemModal({ locations, currentUser, onClose }: {
                                 <select
                                     name="unit"
                                     required
+                                    value={selectedUnit}
+                                    onChange={(e) => setSelectedUnit(e.target.value)}
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all"
                                 >
                                     <option value="">Select unit</option>
@@ -1667,8 +1673,31 @@ function AddItemModal({ locations, currentUser, onClose }: {
                                     <option value="pcs">Pieces</option>
                                     <option value="m³">Cubic Meters (m³)</option>
                                     <option value="tons">Tons</option>
+                                    <option value="drums">Drums</option>
+                                    <option value="gallons">Gallons</option>
                                 </select>
                             </div>
+
+                            {(selectedUnit === 'drums' || selectedUnit === 'gallons') && (
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
+                                        Liters per {selectedUnit === 'drums' ? 'Drum' : 'Gallon'} *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        name="literCapacity"
+                                        step="0.01"
+                                        required
+                                        defaultValue={selectedUnit === 'drums' ? '205' : '25'}
+                                        key={selectedUnit}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all placeholder:text-gray-400"
+                                        placeholder={`e.g., ${selectedUnit === 'drums' ? '205' : '25'} liters`}
+                                    />
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Default: {selectedUnit === 'drums' ? '205' : '25'} liters per {selectedUnit === 'drums' ? 'drum' : 'gallon'}
+                                    </p>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Max Capacity</label>
