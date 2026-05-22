@@ -62,7 +62,8 @@ export async function getInventoryStats() {
         consumables: items.filter(i => i.category === 'Consumable'),
         equipment: items.filter(i => i.category === 'Equipment'),
         rawMaterials: items.filter(i => i.category === 'Raw Material'),
-        scraps: items.filter(i => i.category === 'Scraps')
+        scraps: items.filter(i => i.category === 'Scraps'),
+        lubricants: items.filter(i => i.category === 'Lubricants')
     }
 
     return {
@@ -2669,3 +2670,48 @@ export async function getItemsWithPriceChanges(days: number = 30) {
         priceChangePercent: data.oldestPrice > 0 ? ((data.latestPrice - data.oldestPrice) / data.oldestPrice) * 100 : 0
     }))
 }
+
+// ==================== CUSTOM INVENTORY CATEGORIES ====================
+
+export async function getCustomCategories() {
+    const categories = await prisma.customInventoryCategory.findMany({
+        orderBy: { name: 'asc' }
+    })
+    return categories.map(c => c.name)
+}
+
+export async function createCustomCategory(name: string) {
+    if (!name || name.trim().length === 0) {
+        throw new Error('Category name is required')
+    }
+
+    const trimmedName = name.trim()
+
+    // Check built-in categories
+    const builtIn = ['Raw Material', 'Consumable', 'Equipment', 'Asset', 'Scraps', 'Lubricants']
+    if (builtIn.includes(trimmedName)) {
+        throw new Error(`"${trimmedName}" is already a built-in category`)
+    }
+
+    // Check for duplicates
+    const existing = await prisma.customInventoryCategory.findUnique({
+        where: { name: trimmedName }
+    })
+    if (existing) {
+        throw new Error(`Category "${trimmedName}" already exists`)
+    }
+
+    const session = await auth()
+    const createdBy = session?.user?.name || session?.user?.email || 'System'
+
+    await prisma.customInventoryCategory.create({
+        data: {
+            name: trimmedName,
+            createdBy
+        }
+    })
+
+    revalidatePath('/inventory')
+    return { success: true, name: trimmedName }
+}
+

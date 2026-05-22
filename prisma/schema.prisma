@@ -872,3 +872,11 @@ model DuplicateAlert {
   @@index([status])
   @@index([entityType])
 }
+
+// Custom Inventory Categories
+model CustomInventoryCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdBy String?
+  createdAt DateTime @default(now())
+}

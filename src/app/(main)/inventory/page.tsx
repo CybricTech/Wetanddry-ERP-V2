@@ -1,5 +1,5 @@
 import React from 'react';
-import { getInventoryStats, getStorageLocations, getAllStockTransactions, getPendingApprovals } from '@/lib/actions/inventory';
+import { getInventoryStats, getStorageLocations, getAllStockTransactions, getPendingApprovals, getCustomCategories } from '@/lib/actions/inventory';
 import InventoryClient from '@/components/inventory/InventoryClient';
 import { auth } from '@/auth';
 
@@ -12,11 +12,12 @@ export default async function InventoryPage() {
     const currentUser = session?.user?.name || session?.user?.email || 'Unknown';
 
     // Fetch all required data in parallel
-    const [inventoryStats, locations, transactionsData, pendingData] = await Promise.all([
+    const [inventoryStats, locations, transactionsData, pendingData, customCategories] = await Promise.all([
         getInventoryStats(),
         getStorageLocations(),
         getAllStockTransactions({ limit: 100 }),
-        getPendingApprovals()
+        getPendingApprovals(),
+        getCustomCategories()
     ]);
 
     const { items, totalItems, lowStockItems, totalValue, expiringItems, siloStats } = inventoryStats;
@@ -35,6 +36,7 @@ export default async function InventoryPage() {
             pendingCounts={pendingData.counts}
             currentUser={currentUser}
             userRole={session?.user?.role}
+            customCategories={customCategories}
         />
     );
 }

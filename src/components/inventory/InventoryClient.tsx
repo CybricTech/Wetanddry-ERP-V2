@@ -86,6 +86,24 @@ interface InventoryClientProps {
     };
     currentUser: string;
     userRole?: string;
+    customCategories?: string[];
+}
+
+const BUILT_IN_CATEGORIES = ['Raw Material', 'Consumable', 'Equipment', 'Asset', 'Scraps', 'Lubricants'];
+
+const CATEGORY_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+    'Raw Material': { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
+    'Consumable': { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
+    'Equipment': { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500' },
+    'Asset': { bg: 'bg-green-100', text: 'text-green-700', dot: 'bg-green-500' },
+    'Scraps': { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
+    'Lubricants': { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500' },
+};
+
+const DEFAULT_CATEGORY_COLOR = { bg: 'bg-teal-100', text: 'text-teal-700', dot: 'bg-teal-500' };
+
+function getCategoryColor(category: string) {
+    return CATEGORY_COLORS[category] || DEFAULT_CATEGORY_COLOR;
 }
 
 export default function InventoryClient({
@@ -100,8 +118,11 @@ export default function InventoryClient({
     pendingApprovals,
     pendingCounts,
     currentUser,
-    userRole
+    userRole,
+    customCategories = []
 }: InventoryClientProps) {
+    // Combine built-in and custom categories
+    const allCategories = [...BUILT_IN_CATEGORIES, ...customCategories];
     const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'containers' | 'locations' | 'activity' | 'expiring'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
@@ -150,14 +171,14 @@ export default function InventoryClient({
         return new Date(item.expiryDate) <= thirtyDaysFromNow;
     });
 
-    // Category summary
-    const categoryBreakdown = [
-        { name: 'Raw Material', count: items.filter(i => i.category === 'Raw Material').length, color: 'bg-blue-500' },
-        { name: 'Consumable', count: items.filter(i => i.category === 'Consumable').length, color: 'bg-amber-500' },
-        { name: 'Equipment', count: items.filter(i => i.category === 'Equipment').length, color: 'bg-purple-500' },
-        { name: 'Asset', count: items.filter(i => i.category === 'Asset').length, color: 'bg-green-500' },
-        { name: 'Scraps', count: items.filter(i => i.category === 'Scraps').length, color: 'bg-red-500' },
-    ];
+    // Category summary - dynamically includes custom categories
+    const categoryBreakdown = allCategories
+        .map(name => ({
+            name,
+            count: items.filter(i => i.category === name).length,
+            color: getCategoryColor(name).dot
+        }))
+        .filter(cat => cat.count > 0 || BUILT_IN_CATEGORIES.includes(cat.name));
 
     const handleStockAction = (type: 'in' | 'out', item?: InventoryItem) => {
         setModalType(type);
@@ -350,11 +371,9 @@ export default function InventoryClient({
                                 className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:border-blue-500 outline-none"
                             >
                                 <option value="all">All Categories</option>
-                                <option value="Raw Material">Raw Material</option>
-                                <option value="Consumable">Consumable</option>
-                                <option value="Equipment">Equipment</option>
-                                <option value="Asset">Asset</option>
-                                <option value="Scraps">Scraps</option>
+                                {allCategories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -391,15 +410,14 @@ export default function InventoryClient({
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
+                                            {(() => { const cc = getCategoryColor(item.category); return (
                                             <span className={cn(
                                                 "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium",
-                                                item.category === 'Raw Material' && "bg-blue-100 text-blue-700",
-                                                item.category === 'Consumable' && "bg-amber-100 text-amber-700",
-                                                item.category === 'Equipment' && "bg-purple-100 text-purple-700",
-                                                item.category === 'Asset' && "bg-green-100 text-green-700"
+                                                cc.bg, cc.text
                                             )}>
                                                 {item.category}
                                             </span>
+                                            ); })()}
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-sm font-bold text-gray-900">
@@ -884,6 +902,7 @@ export default function InventoryClient({
                 <AddItemModal
                     locations={locations}
                     currentUser={currentUser}
+                    allCategories={allCategories}
                     onClose={() => setShowItemModal(false)}
                 />
             )}
@@ -919,6 +938,7 @@ export default function InventoryClient({
                     locations={locations}
                     onClose={() => { setShowViewItemModal(false); setSelectedItem(null); }}
                     userRole={userRole}
+                    allCategories={allCategories}
                 />
             )}
 
@@ -1507,18 +1527,70 @@ function StockModal({ type, item, items, currentUser, onClose }: {
 }
 
 
-function AddItemModal({ locations, currentUser, onClose }: {
+function AddItemModal({ locations, currentUser, allCategories, onClose }: {
     locations: StorageLocation[];
     currentUser: string;
+    allCategories: string[];
     onClose: () => void;
 }) {
     const [isPending, startTransition] = useTransition();
     const [selectedUnit, setSelectedUnit] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('');
+    const [showCustomInput, setShowCustomInput] = useState(false);
+    const [customCategoryName, setCustomCategoryName] = useState('');
+    const [customCategoryError, setCustomCategoryError] = useState('');
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [localCategories, setLocalCategories] = useState(allCategories);
+
+    const handleCategoryChange = (value: string) => {
+        if (value === '__custom__') {
+            setShowCustomInput(true);
+            setSelectedCategory('');
+            setCustomCategoryError('');
+        } else {
+            setShowCustomInput(false);
+            setSelectedCategory(value);
+            setCustomCategoryName('');
+            setCustomCategoryError('');
+        }
+    };
+
+    const handleCreateCustomCategory = async () => {
+        const name = customCategoryName.trim();
+        if (!name) {
+            setCustomCategoryError('Please enter a category name');
+            return;
+        }
+        if (localCategories.includes(name)) {
+            setCustomCategoryError(`"${name}" already exists`);
+            return;
+        }
+
+        setIsCreatingCategory(true);
+        setCustomCategoryError('');
+        try {
+            const { createCustomCategory } = await import('@/lib/actions/inventory');
+            await createCustomCategory(name);
+            setLocalCategories(prev => [...prev, name]);
+            setSelectedCategory(name);
+            setShowCustomInput(false);
+            setCustomCategoryName('');
+        } catch (error: any) {
+            setCustomCategoryError(error.message || 'Failed to create category');
+        } finally {
+            setIsCreatingCategory(false);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         formData.set('createdBy', currentUser); // Set who created the item
+        // Ensure the selected category is set (hidden input handles this)
+        if (!selectedCategory) {
+            setCustomCategoryError('Please select or create a category');
+            return;
+        }
 
         startTransition(async () => {
             const { createInventoryItem } = await import('@/lib/actions/inventory');
@@ -1554,6 +1626,9 @@ function AddItemModal({ locations, currentUser, onClose }: {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-8 overflow-y-auto flex-1 space-y-8">
+                    {/* Hidden input for the actual category value */}
+                    <input type="hidden" name="category" value={selectedCategory} />
+
                     {/* Basic Information */}
                     <div className="space-y-4">
                         <h4 className="font-semibold text-gray-900 border-b border-gray-100 pb-2 flex items-center gap-2">
@@ -1587,18 +1662,59 @@ function AddItemModal({ locations, currentUser, onClose }: {
 
                             <div>
                                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Category *</label>
-                                <select
-                                    name="category"
-                                    required
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all"
-                                >
-                                    <option value="">Select category</option>
-                                    <option value="Raw Material">Raw Material</option>
-                                    <option value="Consumable">Consumable</option>
-                                    <option value="Equipment">Equipment</option>
-                                    <option value="Asset">Asset</option>
-                                    <option value="Scraps">Scraps</option>
-                                </select>
+                                {!showCustomInput ? (
+                                    <select
+                                        value={selectedCategory}
+                                        onChange={(e) => handleCategoryChange(e.target.value)}
+                                        required={!showCustomInput}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all"
+                                    >
+                                        <option value="">Select category</option>
+                                        {localCategories.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                        <option value="__custom__">✨ Custom (Create New)</option>
+                                    </select>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={customCategoryName}
+                                                onChange={(e) => { setCustomCategoryName(e.target.value); setCustomCategoryError(''); }}
+                                                placeholder="Enter new category name..."
+                                                autoFocus
+                                                className="flex-1 px-4 py-3 bg-gray-50 border border-purple-300 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all placeholder:text-gray-400"
+                                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCustomCategory(); } }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleCreateCustomCategory}
+                                                disabled={isCreatingCategory}
+                                                className="px-4 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-medium text-sm flex items-center gap-1.5 disabled:opacity-50"
+                                            >
+                                                {isCreatingCategory ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                                Add
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setShowCustomInput(false); setCustomCategoryName(''); setCustomCategoryError(''); }}
+                                                className="px-3 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-all"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                        {customCategoryError && (
+                                            <p className="text-xs text-red-600 flex items-center gap-1">
+                                                <AlertCircle size={12} />
+                                                {customCategoryError}
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-gray-400">
+                                            This category will be saved and available for future items.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -2238,11 +2354,12 @@ function LoadCementModal({ silo, onClose }: {
 
 // ==================== VIEW/EDIT ITEM MODAL ====================
 
-function ViewItemModal({ item, locations, onClose, userRole }: {
+function ViewItemModal({ item, locations, onClose, userRole, allCategories }: {
     item: InventoryItem;
     locations: StorageLocation[];
     onClose: () => void;
     userRole?: string;
+    allCategories: string[];
 }) {
     const [activeTabModal, setActiveTabModal] = useState<'details' | 'edit' | 'history' | 'pricing'>('details');
     const [isPending, startTransition] = useTransition();
@@ -2471,10 +2588,9 @@ function ViewItemModal({ item, locations, onClose, userRole }: {
                                             required
                                             className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all appearance-none"
                                         >
-                                            <option value="Raw Material">Raw Material</option>
-                                            <option value="Consumable">Consumable</option>
-                                            <option value="Equipment">Equipment</option>
-                                            <option value="Asset">Asset</option>
+                                            {allCategories.map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
                                         </select>
                                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                                     </div>
