@@ -2,13 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Loader2, Save, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { createStaff, updateStaff, uploadStaffDocument, StaffData } from '@/lib/actions/staff'
 import { DatePicker } from '@/components/ui/date-picker'
+import { STAFF_STATUSES } from '@/lib/constants/staff'
 
 // Schema matching the server action validation
 const StaffSchema = z.object({
@@ -21,6 +22,17 @@ const StaffSchema = z.object({
     address: z.string().min(1, 'Address is required'),
     status: z.string().min(1, 'Status is required'),
     joinedDate: z.string().min(1, 'Joined date is required'), // Input type="date" returns string
+
+    // Banking details (all optional)
+    bankName: z.string().optional(),
+    accountNumber: z.string().optional(),
+    accountName: z.string().optional(),
+
+    // Next of kin (all optional)
+    nokName: z.string().optional(),
+    nokRelationship: z.string().optional(),
+    nokPhone: z.string().optional(),
+    nokAddress: z.string().optional(),
 })
 
 type StaffFormValues = z.infer<typeof StaffSchema>
@@ -40,7 +52,15 @@ export default function StaffForm({ initialData, isEditing = false }: StaffFormP
         ...initialData,
         joinedDate: initialData.joinedDate instanceof Date
             ? initialData.joinedDate.toISOString().split('T')[0]
-            : new Date(initialData.joinedDate).toISOString().split('T')[0]
+            : new Date(initialData.joinedDate).toISOString().split('T')[0],
+        // Nullable columns come back as null; inputs need '' to stay controlled.
+        bankName: initialData.bankName ?? '',
+        accountNumber: initialData.accountNumber ?? '',
+        accountName: initialData.accountName ?? '',
+        nokName: initialData.nokName ?? '',
+        nokRelationship: initialData.nokRelationship ?? '',
+        nokPhone: initialData.nokPhone ?? '',
+        nokAddress: initialData.nokAddress ?? '',
     } : {
         status: 'Active',
         joinedDate: new Date().toISOString().split('T')[0]
@@ -48,6 +68,7 @@ export default function StaffForm({ initialData, isEditing = false }: StaffFormP
 
     const {
         register,
+        control,
         handleSubmit,
         formState: { errors },
     } = useForm<StaffFormValues>({
@@ -199,21 +220,115 @@ export default function StaffForm({ initialData, isEditing = false }: StaffFormP
                             {...register('status')}
                             className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
                         >
-                            <option value="Active">Active</option>
-                            <option value="On Leave">On Leave</option>
-                            <option value="Contract">Contract</option>
-                            <option value="Terminated">Terminated</option>
+                            {STAFF_STATUSES.map((status) => (
+                                <option key={status} value={status}>{status}</option>
+                            ))}
                         </select>
                         {errors.status && <p className="text-red-500 text-xs">{errors.status.message}</p>}
+                        {isEditing && (
+                            <p className="text-xs text-gray-500">
+                                To record an exit, use Offboard Staff below — it keeps the record in the Former Staff docket.
+                            </p>
+                        )}
                     </div>
 
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Date Joined</label>
-                        <DatePicker
-                            {...register('joinedDate')}
-                            className="focus:bg-white focus:border-blue-500 py-2.5"
+                        <Controller
+                            control={control}
+                            name="joinedDate"
+                            render={({ field }) => (
+                                <DatePicker
+                                    name={field.name}
+                                    value={field.value}
+                                    onChange={(e) => field.onChange(e.target.value)}
+                                    error={!!errors.joinedDate}
+                                    className="focus:bg-white focus:border-blue-500 py-2.5"
+                                />
+                            )}
                         />
                         {errors.joinedDate && <p className="text-red-500 text-xs">{errors.joinedDate.message}</p>}
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
+                <div className="mb-6">
+                    <h2 className="text-xl font-semibold text-gray-900">Bank Details</h2>
+                    <p className="text-sm text-gray-500 mt-1">Optional — used for salary payments.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Bank Name</label>
+                        <input
+                            {...register('bankName')}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
+                            placeholder="e.g. Access Bank"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Account Number</label>
+                        <input
+                            {...register('accountNumber')}
+                            inputMode="numeric"
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
+                            placeholder="e.g. 0123456789"
+                        />
+                    </div>
+
+                    <div className="col-span-full space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Account Holder Name</label>
+                        <input
+                            {...register('accountName')}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
+                            placeholder="Leave blank if same as staff name"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
+                <div className="mb-6">
+                    <h2 className="text-xl font-semibold text-gray-900">Next of Kin</h2>
+                    <p className="text-sm text-gray-500 mt-1">Optional — emergency contact details.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Full Name</label>
+                        <input
+                            {...register('nokName')}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
+                            placeholder="e.g. Jane Doe"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Relationship</label>
+                        <input
+                            {...register('nokRelationship')}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
+                            placeholder="e.g. Spouse, Sibling, Parent"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Phone Number</label>
+                        <input
+                            {...register('nokPhone')}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
+                            placeholder="+234..."
+                        />
+                    </div>
+
+                    <div className="col-span-full space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Address</label>
+                        <textarea
+                            {...register('nokAddress')}
+                            rows={3}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
+                            placeholder="Next of kin residential address"
+                        />
                     </div>
                 </div>
             </div>

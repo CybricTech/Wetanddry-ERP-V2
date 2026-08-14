@@ -61,6 +61,7 @@ export async function scanForDuplicates() {
 
     // 5. Scan Staff by email (case-insensitive, non-null)
     const staff = await prisma.staff.findMany({
+        where: { exitType: null }, // offboarded staff are archived, not duplicates
         select: { id: true, email: true, phone: true }
     })
 

@@ -20,6 +20,23 @@ interface DatePickerProps extends React.InputHTMLAttributes<HTMLInputElement> {
     value?: string
 }
 
+/**
+ * Parses a `yyyy-MM-dd` string as a *local* date. `new Date('2025-03-15')`
+ * parses as UTC midnight, which renders as the previous day for anyone west
+ * of UTC.
+ */
+function parseDateValue(value?: string): Date | undefined {
+    if (!value) return undefined
+
+    const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+    if (ymd) {
+        return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]))
+    }
+
+    const parsed = new Date(value)
+    return isNaN(parsed.getTime()) ? undefined : parsed
+}
+
 export function DatePicker({
     date,
     onDateChange,
@@ -29,19 +46,20 @@ export function DatePicker({
     value,
     onChange,
     name,
+    disabled,
     ...props
 }: DatePickerProps) {
-    // Try to parse an initial date string if `date` is not provided directly
-    const [internalDate, setInternalDate] = React.useState<Date | undefined>(() => {
-        if (date) return date
-        if (value && !isNaN(Date.parse(value))) return new Date(value)
-        return undefined
-    })
+    const [open, setOpen] = React.useState(false)
 
-    // Keep internal state in sync with external `date` prop
+    // Try to parse an initial date string if `date` is not provided directly
+    const [internalDate, setInternalDate] = React.useState<Date | undefined>(
+        () => date ?? parseDateValue(value)
+    )
+
+    // Keep internal state in sync with external `date` / `value` props
     React.useEffect(() => {
         if (date !== undefined) setInternalDate(date)
-        else if (value && !isNaN(Date.parse(value))) setInternalDate(new Date(value))
+        else setInternalDate(parseDateValue(value))
     }, [date, value])
 
     const handleSelect = (newDate: Date | undefined) => {
@@ -55,17 +73,25 @@ export function DatePicker({
             } as React.ChangeEvent<HTMLInputElement>
             onChange(e)
         }
+
+        // Close once a day is chosen — the popover has no other dismiss action.
+        if (newDate) setOpen(false)
     }
 
     return (
-        <Popover>
+        <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
                 <button
                     type="button"
+                    disabled={disabled}
                     className={cn(
-                        "w-full flex items-center px-4 py-3 bg-gray-50 border rounded-xl text-left font-normal focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all",
+                        "w-full flex items-center px-4 py-3 bg-gray-50 border rounded-xl text-left font-normal text-gray-700 transition-all",
+                        "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                         !internalDate && "text-gray-500",
-                        error ? "border-red-300 focus:ring-red-500" : "border-gray-200",
+                        error
+                            ? "border-red-300 hover:border-red-400 focus:ring-red-500"
+                            : "border-gray-200 hover:border-blue-500",
+                        disabled && "opacity-50 cursor-not-allowed hover:border-gray-200",
                         className
                     )}
                 >
@@ -78,7 +104,8 @@ export function DatePicker({
                     mode="single"
                     selected={internalDate}
                     onSelect={handleSelect}
-                    initialFocus
+                    defaultMonth={internalDate}
+                    autoFocus
                 />
             </PopoverContent>
             {/* Hidden input to ensure standard HTML forms still receive the date value */}

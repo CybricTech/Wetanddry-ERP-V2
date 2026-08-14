@@ -3,62 +3,57 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import {
-    Search, Filter, MoreHorizontal, Mail, Phone,
-    MapPin, User, FileText, CheckCircle, AlertCircle
-} from 'lucide-react'
+import { Search, Filter, UserMinus, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { STAFF_STATUSES } from '@/lib/constants/staff'
 
-// Define interface locally since Prisma generation failed
-export interface Staff {
+export interface FormerStaff {
     id: string
     firstName: string
     lastName: string
     role: string
     department: string
-    email: string | null
-    phone: string
-    address: string
-    status: string
     joinedDate: Date
+    exitType: string | null
+    exitDate: Date | null
+    exitReason: string | null
     _count?: {
         documents: number
     }
 }
 
-interface StaffListProps {
-    initialStaff: Staff[]
+interface FormerStaffListProps {
+    initialStaff: FormerStaff[]
+    exitTypes: readonly string[]
 }
 
-export default function StaffList({ initialStaff }: StaffListProps) {
+export default function FormerStaffList({ initialStaff, exitTypes }: FormerStaffListProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
     const [searchTerm, setSearchTerm] = useState(searchParams?.get('q') || '')
-    const [statusFilter, setStatusFilter] = useState(searchParams?.get('status') || 'All')
+    const [typeFilter, setTypeFilter] = useState(searchParams?.get('exitType') || 'All')
+
+    const pushParams = (q: string, exitType: string) => {
+        const params = new URLSearchParams()
+        if (q) params.set('q', q)
+        if (exitType && exitType !== 'All') params.set('exitType', exitType)
+        router.push(`/staff/former?${params.toString()}`)
+    }
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault()
-        const params = new URLSearchParams(searchParams?.toString() || '')
-        if (searchTerm) params.set('q', searchTerm)
-        else params.delete('q')
-
-        if (statusFilter && statusFilter !== 'All') params.set('status', statusFilter)
-        else params.delete('status')
-
-        router.push(`/staff?${params.toString()}`)
+        pushParams(searchTerm, typeFilter)
     }
 
-    const handleStatusChange = (status: string) => {
-        setStatusFilter(status)
-        const params = new URLSearchParams(searchParams?.toString() || '')
-        if (searchTerm) params.set('q', searchTerm)
-
-        if (status && status !== 'All') params.set('status', status)
-        else params.delete('status')
-
-        router.push(`/staff?${params.toString()}`)
+    const handleTypeChange = (exitType: string) => {
+        setTypeFilter(exitType)
+        pushParams(searchTerm, exitType)
     }
+
+    const badgeClass = (exitType: string | null) =>
+        exitType === 'Retired' ? 'bg-blue-100 text-blue-700'
+            : exitType === 'Dismissed' ? 'bg-red-100 text-red-700'
+                : exitType === 'Resigned' ? 'bg-amber-100 text-amber-700'
+                    : 'bg-gray-100 text-gray-700'
 
     return (
         <div className="space-y-6">
@@ -70,7 +65,7 @@ export default function StaffList({ initialStaff }: StaffListProps) {
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Search staff by name, role, or email..."
+                        placeholder="Search former staff by name, role, or email..."
                         className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-transparent focus:bg-white border focus:border-blue-500 rounded-xl outline-none transition-all"
                     />
                 </form>
@@ -78,17 +73,16 @@ export default function StaffList({ initialStaff }: StaffListProps) {
                     <div className="relative group">
                         <button className="px-4 py-2.5 bg-gray-50 text-gray-700 rounded-xl hover:bg-gray-100 font-medium flex items-center gap-2 border border-transparent hover:border-gray-200 transition-all">
                             <Filter size={18} />
-                            Status: {statusFilter}
+                            Exit Type: {typeFilter}
                         </button>
-                        {/* Simple Dropdown for demo */}
                         <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 hidden group-hover:block z-10">
-                            {['All', ...STAFF_STATUSES].map((status) => (
+                            {['All', ...exitTypes].map((exitType) => (
                                 <button
-                                    key={status}
-                                    onClick={() => handleStatusChange(status)}
+                                    key={exitType}
+                                    onClick={() => handleTypeChange(exitType)}
                                     className="w-full text-left px-4 py-2 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl"
                                 >
-                                    {status}
+                                    {exitType}
                                 </button>
                             ))}
                         </div>
@@ -96,7 +90,7 @@ export default function StaffList({ initialStaff }: StaffListProps) {
                 </div>
             </div>
 
-            {/* Staff Table */}
+            {/* Former Staff Table */}
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full">
@@ -104,8 +98,9 @@ export default function StaffList({ initialStaff }: StaffListProps) {
                             <tr className="bg-gray-50 border-b border-gray-100">
                                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Staff Member</th>
                                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Role & Department</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Exit Type</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Exit Date</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Reason</th>
                                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Documents</th>
                                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
@@ -113,18 +108,18 @@ export default function StaffList({ initialStaff }: StaffListProps) {
                         <tbody className="divide-y divide-gray-100">
                             {initialStaff.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                                        <User className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-                                        <p className="text-lg font-medium text-gray-900">No staff members found</p>
-                                        <p className="text-sm">Try adjusting your search or add a new staff member.</p>
+                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                                        <UserMinus className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                                        <p className="text-lg font-medium text-gray-900">No former staff on record</p>
+                                        <p className="text-sm">Staff appear here once they have been offboarded.</p>
                                     </td>
                                 </tr>
                             ) : (
                                 initialStaff.map((staff) => (
-                                    <tr key={staff.id} className="hover:bg-gray-50 transition-colors group">
+                                    <tr key={staff.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center">
-                                                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
+                                                <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold text-lg">
                                                     {staff.firstName[0]}{staff.lastName[0]}
                                                 </div>
                                                 <div className="ml-4">
@@ -138,30 +133,20 @@ export default function StaffList({ initialStaff }: StaffListProps) {
                                             <div className="text-xs text-gray-500">{staff.department}</div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col gap-1">
-                                                {staff.email && (
-                                                    <div className="flex items-center text-xs text-gray-600">
-                                                        <Mail size={12} className="mr-1.5" />
-                                                        {staff.email}
-                                                    </div>
-                                                )}
-                                                <div className="flex items-center text-xs text-gray-600">
-                                                    <Phone size={12} className="mr-1.5" />
-                                                    {staff.phone}
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={cn(
-                                                "px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1",
-                                                staff.status === 'Active' ? "bg-green-100 text-green-700" :
-                                                    staff.status === 'On Leave' ? "bg-yellow-100 text-yellow-700" :
-                                                        "bg-gray-100 text-gray-700"
+                                                "px-2.5 py-1 rounded-full text-xs font-medium",
+                                                badgeClass(staff.exitType)
                                             )}>
-                                                {staff.status === 'Active' && <CheckCircle size={12} />}
-                                                {staff.status === 'On Leave' && <AlertCircle size={12} />}
-                                                {staff.status}
+                                                {staff.exitType}
                                             </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                            {staff.exitDate ? new Date(staff.exitDate).toLocaleDateString() : '—'}
+                                        </td>
+                                        <td className="px-6 py-4 max-w-xs">
+                                            <p className="text-sm text-gray-600 truncate" title={staff.exitReason || ''}>
+                                                {staff.exitReason || '—'}
+                                            </p>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center text-sm text-gray-500">

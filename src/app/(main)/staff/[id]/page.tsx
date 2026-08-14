@@ -1,6 +1,7 @@
 import { getStaffById } from '@/lib/actions/staff'
 import StaffForm from '@/components/staff/StaffForm'
 import StaffDocuments from '@/components/staff/StaffDocuments'
+import OffboardStaffPanel from '@/components/staff/OffboardStaffPanel'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { notFound } from 'next/navigation'
@@ -28,13 +29,20 @@ export default async function StaffDetailsPage({
         <div className="max-w-4xl mx-auto space-y-8">
             <div className="flex items-center gap-4">
                 <Link
-                    href="/staff"
+                    href={staff.exitType ? '/staff/former' : '/staff'}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
                 >
                     <ArrowLeft size={24} />
                 </Link>
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">{staff.firstName} {staff.lastName}</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-3xl font-bold text-gray-900">{staff.firstName} {staff.lastName}</h1>
+                        {staff.exitType && (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+                                Former Staff
+                            </span>
+                        )}
+                    </div>
                     <p className="text-gray-600 mt-1">{staff.role} • {staff.department}</p>
                 </div>
             </div>
@@ -42,6 +50,18 @@ export default async function StaffDetailsPage({
             <StaffForm initialData={{ ...staff, email: staff.email ?? undefined }} isEditing />
 
             <StaffDocuments staffId={staff.id} documents={staff.documents} canManageStaff={canManageStaff} />
+
+            {canManageStaff && (
+                <OffboardStaffPanel
+                    staffId={staff.id}
+                    staffName={`${staff.firstName} ${staff.lastName}`}
+                    exitType={staff.exitType}
+                    exitDate={staff.exitDate}
+                    exitReason={staff.exitReason}
+                    exitRecordedBy={staff.exitRecordedBy}
+                    exitRecordedAt={staff.exitRecordedAt}
+                />
+            )}
         </div>
     )
 }

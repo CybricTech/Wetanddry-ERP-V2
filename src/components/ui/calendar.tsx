@@ -17,37 +17,58 @@ function Calendar({
     return (
         <DayPicker
             showOutsideDays={showOutsideDays}
-            className={cn("p-3", className)}
+            // Softer base text tone — PopoverContent inherits near-black
+            // (text-gray-950), which reads harsh across a dense date grid.
+            className={cn("p-3 text-gray-700", className)}
             classNames={{
-                months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-                month: "space-y-4",
-                caption: "flex justify-center pt-1 relative items-center",
-                caption_label: "text-sm font-medium",
-                nav: "space-x-1 flex items-center",
-                nav_button: cn(
-                    "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 flex items-center justify-center rounded-md border border-gray-200 hover:bg-gray-100 transition-colors"
+                // NOTE: these are react-day-picker v9 element keys. v8 names
+                // (caption/table/head_row/cell/day_selected/...) are silently
+                // ignored by v9 and leave the calendar unstyled.
+                months: "relative flex flex-col sm:flex-row gap-4",
+                month: "w-full space-y-4",
+                nav: "absolute inset-x-0 top-0 z-10 flex items-center justify-between",
+                button_previous: cn(
+                    "h-7 w-7 bg-transparent p-0 text-gray-500 inline-flex items-center justify-center rounded-md border border-gray-200 transition-colors",
+                    "hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50",
+                    "disabled:opacity-30 disabled:pointer-events-none"
                 ),
-                nav_button_previous: "absolute left-1",
-                nav_button_next: "absolute right-1",
-                table: "w-full border-collapse space-y-1",
-                head_row: "flex",
-                head_cell:
-                    "text-gray-500 rounded-md w-9 font-normal text-[0.8rem]",
-                row: "flex w-full mt-2",
-                cell: "h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-gray-100/50 [&:has([aria-selected])]:bg-gray-100 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                day: cn(
-                    "h-9 w-9 p-0 font-normal aria-selected:opacity-100 hover:bg-gray-100 rounded-md transition-colors inline-flex items-center justify-center outline-none"
+                button_next: cn(
+                    "h-7 w-7 bg-transparent p-0 text-gray-500 inline-flex items-center justify-center rounded-md border border-gray-200 transition-colors",
+                    "hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50",
+                    "disabled:opacity-30 disabled:pointer-events-none"
                 ),
-                day_range_end: "day-range-end",
-                day_selected:
-                    "bg-emerald-600 text-white hover:bg-emerald-600 hover:text-white focus:bg-emerald-600 focus:text-white rounded-md",
-                day_today: "bg-gray-100 text-gray-900 rounded-md",
-                day_outside:
-                    "day-outside text-gray-500 opacity-50 aria-selected:bg-gray-100/50 aria-selected:text-gray-500 aria-selected:opacity-30",
-                day_disabled: "text-gray-500 opacity-50",
-                day_range_middle:
-                    "aria-selected:bg-gray-100 aria-selected:text-gray-900",
-                day_hidden: "invisible",
+                month_caption: "flex h-7 items-center justify-center",
+                caption_label: "text-sm font-medium text-gray-800",
+                month_grid: "w-full border-collapse",
+                weekdays: "flex",
+                weekday: "w-9 font-normal text-[0.8rem] text-gray-400",
+                week: "flex w-full mt-2",
+                // In v9 `day` is the grid cell and `day_button` is the button
+                // inside it; selection/today flags land on the cell.
+                day: "relative h-9 w-9 p-0 text-center text-sm focus-within:relative focus-within:z-20",
+                day_button: cn(
+                    "h-9 w-9 p-0 font-normal text-gray-700 inline-flex items-center justify-center rounded-md",
+                    "transition-colors outline-none ring-1 ring-transparent",
+                    // Hover outline in the app's accent blue.
+                    "hover:ring-blue-500 hover:bg-blue-50 hover:text-blue-700",
+                    "focus-visible:ring-2 focus-visible:ring-blue-500"
+                ),
+                // Hover rules are repeated here so the selected day keeps its
+                // fill instead of picking up the lighter hover treatment.
+                selected: cn(
+                    "[&>button]:bg-blue-600 [&>button]:text-white",
+                    "[&>button]:hover:bg-blue-600 [&>button]:hover:text-white [&>button]:hover:ring-transparent"
+                ),
+                // Scoped with :not([data-selected]) so a selected day that is
+                // also today keeps the blue fill.
+                today: "[&:not([data-selected])>button]:bg-gray-100 [&:not([data-selected])>button]:text-gray-800",
+                outside: "[&>button]:text-gray-300",
+                disabled: "[&>button]:text-gray-300 [&>button]:pointer-events-none",
+                hidden: "invisible",
+                range_start: "[&>button]:rounded-r-none",
+                range_end: "[&>button]:rounded-l-none",
+                range_middle:
+                    "[&>button]:rounded-none [&>button]:bg-blue-50 [&>button]:text-blue-700",
                 ...classNames,
             }}
             components={{

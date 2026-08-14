@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
 import { auth } from '@/auth'
 import { checkPermission } from '@/lib/permissions'
+import { EXIT_TYPES } from '@/lib/constants/staff'
 
 // Schema for Staff validation
 const StaffSchema = z.object({
@@ -19,12 +20,47 @@ const StaffSchema = z.object({
     address: z.string().min(1, 'Address is required'),
     status: z.string().default('Active'),
     joinedDate: z.coerce.date(),
+
+    // Banking details (all optional; '' is normalised to null before write)
+    bankName: z.string().nullish(),
+    accountNumber: z.string().nullish(),
+    accountName: z.string().nullish(),
+
+    // Next of kin (all optional)
+    nokName: z.string().nullish(),
+    nokRelationship: z.string().nullish(),
+    nokPhone: z.string().nullish(),
+    nokAddress: z.string().nullish(),
 })
 
 export type StaffData = z.infer<typeof StaffSchema>
 
+const OffboardSchema = z.object({
+    exitType: z.enum(EXIT_TYPES),
+    exitDate: z.coerce.date(),
+    exitReason: z.string().min(1, 'Exit reason is required'),
+})
+
+export type OffboardData = z.infer<typeof OffboardSchema>
+
+// Optional text inputs arrive as '' from the form; store them as null so
+// "not provided" is unambiguous.
+const OPTIONAL_TEXT_FIELDS = [
+    'bankName', 'accountNumber', 'accountName',
+    'nokName', 'nokRelationship', 'nokPhone', 'nokAddress',
+] as const
+
+function nullifyBlanks<T extends Record<string, any>>(data: T): T {
+    const out: Record<string, any> = { ...data }
+    for (const field of OPTIONAL_TEXT_FIELDS) {
+        if (out[field] === '') out[field] = null
+    }
+    return out as T
+}
+
 export async function getStaffList(query?: string, status?: string) {
-    const where: any = {}
+    // Offboarded staff live in the Former Staff docket and never appear here.
+    const where: any = { exitType: null }
 
     if (query) {
         where.OR = [
@@ -91,7 +127,7 @@ export async function createStaff(data: StaffData) {
 
     try {
         const staff = await prisma.staff.create({
-            data: validated.data
+            data: nullifyBlanks(validated.data)
         })
 
         revalidatePath('/staff')
@@ -123,7 +159,7 @@ export async function updateStaff(id: string, data: Partial<StaffData>) {
     try {
         const staff = await prisma.staff.update({
             where: { id },
-            data: validated.data
+            data: nullifyBlanks(validated.data)
         })
 
         revalidatePath('/staff')
@@ -135,15 +171,42 @@ export async function updateStaff(id: string, data: Partial<StaffData>) {
     }
 }
 
-export async function toggleStaffStatus(id: string, currentStatus: string) {
-    // Simple toggle logic or set specific status
-    // If we want to "Archive", maybe set to "Terminated" or have an "Archived" status?
-    // The requirement says "Deactivate/Archive", let's assume setting to "Terminated" or "Inactive"
+export async function getFormerStaffList(query?: string, exitType?: string) {
+    // The Former Staff docket: every record that has been offboarded,
+    // regardless of why they left.
+    const where: any = { exitType: { not: null } }
 
-    // For now, let's just allow setting the status directly via updateStaff, 
-    // but this action could be for a quick toggle if needed.
-    // Let's implement a specific archive action.
+    if (query) {
+        where.OR = [
+            { firstName: { contains: query } },
+            { lastName: { contains: query } },
+            { email: { contains: query } },
+            { role: { contains: query } },
+        ]
+    }
 
+    if (exitType && exitType !== 'All') {
+        where.exitType = exitType
+    }
+
+    try {
+        const staff = await prisma.staff.findMany({
+            where,
+            orderBy: { exitDate: 'desc' },
+            include: {
+                _count: {
+                    select: { documents: true }
+                }
+            }
+        })
+        return { success: true, data: staff }
+    } catch (error) {
+        console.error('Error fetching former staff list:', error)
+        return { success: false, error: 'Failed to fetch former staff list' }
+    }
+}
+
+export async function offboardStaff(id: string, data: OffboardData) {
     const session = await auth()
     if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
     try {
@@ -152,18 +215,66 @@ export async function toggleStaffStatus(id: string, currentStatus: string) {
         return { success: false, error: 'Unauthorized' }
     }
 
-    const newStatus = currentStatus === 'Active' ? 'Terminated' : 'Active' // Example toggle
+    const validated = OffboardSchema.safeParse(data)
+    if (!validated.success) {
+        return { success: false, error: validated.error.flatten().fieldErrors }
+    }
+
+    try {
+        const existing = await prisma.staff.findUnique({ where: { id }, select: { exitType: true } })
+        if (!existing) return { success: false, error: 'Staff not found' }
+        if (existing.exitType) return { success: false, error: 'This staff member has already been offboarded' }
+
+        const staff = await prisma.staff.update({
+            where: { id },
+            data: {
+                ...validated.data,
+                exitRecordedBy: session.user.name || session.user.email || session.user.role,
+                exitRecordedAt: new Date(),
+            }
+        })
+
+        revalidatePath('/staff')
+        revalidatePath('/staff/former')
+        revalidatePath(`/staff/${id}`)
+        return { success: true, data: staff }
+    } catch (error) {
+        console.error('Error offboarding staff:', error)
+        return { success: false, error: 'Failed to offboard staff member' }
+    }
+}
+
+export async function reinstateStaff(id: string) {
+    // Recovery path for a mistaken offboarding: clears the exit record and
+    // returns the staff member to the active registry.
+    const session = await auth()
+    if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
+    try {
+        checkPermission(session.user.role, 'manage_staff')
+    } catch (e) {
+        return { success: false, error: 'Unauthorized' }
+    }
 
     try {
         const staff = await prisma.staff.update({
             where: { id },
-            data: { status: newStatus }
+            data: {
+                exitType: null,
+                exitDate: null,
+                exitReason: null,
+                exitRecordedBy: null,
+                exitRecordedAt: null,
+                status: 'Active',
+            }
         })
+
         revalidatePath('/staff')
+        revalidatePath('/staff/former')
         revalidatePath(`/staff/${id}`)
         return { success: true, data: staff }
     } catch (error) {
-        return { success: false, error: 'Failed to update status' }
+        console.error('Error reinstating staff:', error)
+        return { success: false, error: 'Failed to reinstate staff member' }
     }
 }
 

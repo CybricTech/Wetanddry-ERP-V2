@@ -1,7 +1,7 @@
 import { getStaffList } from '@/lib/actions/staff'
 import StaffList from '@/components/staff/StaffList'
 import Link from 'next/link'
-import { Plus, Users } from 'lucide-react'
+import { Plus, Users, UserMinus } from 'lucide-react'
 import { auth } from '@/auth'
 import { hasPermission } from '@/lib/permissions'
 
@@ -30,6 +30,13 @@ export default async function StaffPage({
                     <p className="text-gray-600 mt-1">Manage employee records, roles, and documents</p>
                 </div>
                 <div className="flex gap-3">
+                    <Link
+                        href="/staff/former"
+                        className="inline-flex items-center justify-center px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+                    >
+                        <UserMinus size={20} className="mr-2" />
+                        Former Staff
+                    </Link>
                     {canManageStaff && (
                         <Link
                             href="/staff/add"

@@ -450,13 +450,34 @@ model Staff {
   email       String?
   phone       String
   address     String
-  status      String   @default("Active") // Active, On Leave, Terminated, Contract
+  status      String   @default("Active") // Active, On Leave, Contract
   joinedDate  DateTime
-  
+
+  // Banking details (optional)
+  bankName      String?
+  accountNumber String?
+  accountName   String?
+
+  // Next of kin (optional)
+  nokName         String?
+  nokRelationship String?
+  nokPhone        String?
+  nokAddress      String?
+
+  // Offboarding. A non-null exitType is the single source of truth for
+  // "no longer active" — such records live in the Former Staff docket.
+  exitType       String?   // Retired, Dismissed, Resigned, Contract Ended, Other
+  exitDate       DateTime?
+  exitReason     String?
+  exitRecordedBy String?
+  exitRecordedAt DateTime?
+
   documents   StaffDocument[]
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([exitType])
 }
 
 model StaffDocument {
