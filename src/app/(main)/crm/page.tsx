@@ -38,7 +38,7 @@ export default async function CRMPage() {
     return (
         <CRMClient
             initialClients={clients}
-            userRole={userRole}
+            permissions={session.user.permissions ?? []}
             userName={session.user.name || 'User'}
         />
     )

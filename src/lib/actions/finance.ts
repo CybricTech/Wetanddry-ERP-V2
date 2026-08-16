@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { formatCurrency } from '@/lib/utils'
+import { hasPermission } from '@/lib/permissions'
 
 // ==================== COMPANY-WIDE FINANCE DATA ====================
 
@@ -14,9 +15,7 @@ export async function getCompanyFinancials() {
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    // Only Manager, Accountant, Super Admin can access
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied: Finance data is restricted')
     }
 
@@ -129,8 +128,7 @@ export async function getInventoryBreakdown() {
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied')
     }
 
@@ -206,8 +204,7 @@ export async function getFuelCostBreakdown(
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied')
     }
 
@@ -301,8 +298,7 @@ export async function getMaintenanceCostBreakdown(
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied')
     }
 
@@ -379,8 +375,7 @@ export async function exportFinanceReportCSV() {
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied')
     }
 

@@ -6,7 +6,7 @@ import {
     AlertTriangle, X, ArrowRight, Package, RefreshCw, ArrowUpRight, Play
 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermissionIn, type Permission } from '@/lib/permissions'
 import {
     startReconciliation,
     getReconciliation,
@@ -48,14 +48,14 @@ interface ReconciliationItem {
 interface ReconciliationClientProps {
     initialReconciliations: Reconciliation[]
     locations: { id: string; name: string; type: string }[]
-    userRole: string
+    permissions: Permission[]
     userName: string
 }
 
 export default function ReconciliationClient({
     initialReconciliations,
     locations,
-    userRole,
+    permissions,
     userName
 }: ReconciliationClientProps) {
     const [reconciliations, setReconciliations] = useState<Reconciliation[]>(initialReconciliations)
@@ -65,7 +65,7 @@ export default function ReconciliationClient({
     const [selectedRecon, setSelectedRecon] = useState<any>(null)
     const [showWizard, setShowWizard] = useState(false)
 
-    const canApprove = hasPermission(userRole, 'approve_stock_transactions')
+    const canApprove = hasPermissionIn(permissions, 'approve_stock_transactions')
 
     const filteredReconciliations = reconciliations.filter(r => {
         if (filter.status !== 'all' && r.status !== filter.status) return false

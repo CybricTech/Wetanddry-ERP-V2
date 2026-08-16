@@ -1,5 +1,7 @@
 import { getUsers } from '@/lib/actions/users';
-import UserList from '@/app/(main)/users/UserList';
+import { getRoles } from '@/lib/actions/roles';
+import UsersAndRoles from '@/components/settings/UsersAndRoles';
+import type { EditableRole } from '@/components/settings/RoleEditorModal';
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/permissions';
@@ -12,8 +14,9 @@ export default async function SettingsUsersPage() {
         redirect('/settings/account');
     }
 
-    const result = await getUsers();
-    const users = result.success ? result.data || [] : [];
+    const [usersResult, rolesResult] = await Promise.all([getUsers(), getRoles()]);
+    const users = usersResult.success ? usersResult.data || [] : [];
+    const roles = rolesResult.success ? (rolesResult.data as EditableRole[]) : [];
 
-    return <UserList initialUsers={users} />;
+    return <UsersAndRoles initialUsers={users} initialRoles={roles} />;
 }

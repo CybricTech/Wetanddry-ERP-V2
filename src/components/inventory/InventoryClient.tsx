@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition, useEffect } from 'react';
 import { usePermissions } from '@/hooks/use-permissions';
-import { hasPermission, Permission } from '@/lib/permissions';
+import { hasPermissionIn, Permission } from '@/lib/permissions';
 import {
     Package, AlertTriangle, ArrowUpRight, ArrowDownRight, Database, Search, Filter,
     Plus, ChevronDown, Clock, CheckCircle2, XCircle, Warehouse, FlaskConical,
@@ -85,7 +85,7 @@ interface InventoryClientProps {
         total: number;
     };
     currentUser: string;
-    userRole?: string;
+    permissions?: Permission[];
     customCategories?: string[];
 }
 
@@ -118,7 +118,7 @@ export default function InventoryClient({
     pendingApprovals,
     pendingCounts,
     currentUser,
-    userRole,
+    permissions,
     customCategories = []
 }: InventoryClientProps) {
     // Combine built-in and custom categories
@@ -143,14 +143,12 @@ export default function InventoryClient({
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const { can: clientCan } = usePermissions();
 
-    // Use server-side role if available, otherwise fall back to client-side session
-    // This prevents the "flash of hidden UI" when session is loading
+    // Prefer the server-resolved permission list, falling back to the
+    // session-backed hook. This prevents the "flash of hidden UI" while loading.
     const can = (permission: Permission): boolean => {
-        if (userRole) {
-            // Use server-provided role (instant, no loading state)
-            return hasPermission(userRole, permission);
+        if (permissions) {
+            return hasPermissionIn(permissions, permission);
         }
-        // Fall back to client-side session (may have loading delay)
         return clientCan(permission);
     };
 
@@ -301,7 +299,7 @@ export default function InventoryClient({
                     {/* Silo Visualization */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {siloStats.map(silo => (
-                            <SiloCard key={silo.id} silo={silo} onStockAction={handleStockAction} userRole={userRole} />
+                            <SiloCard key={silo.id} silo={silo} onStockAction={handleStockAction} permissions={permissions} />
                         ))}
                     </div>
 
@@ -851,7 +849,7 @@ export default function InventoryClient({
                     transactions={transactions}
                     pendingApprovals={pendingApprovals}
                     pendingCounts={pendingCounts}
-                    userRole={userRole}
+                    permissions={permissions}
                 />
             )}
 
@@ -937,7 +935,7 @@ export default function InventoryClient({
                     item={selectedItem}
                     locations={locations}
                     onClose={() => { setShowViewItemModal(false); setSelectedItem(null); }}
-                    userRole={userRole}
+                    permissions={permissions}
                     allCategories={allCategories}
                 />
             )}
@@ -996,13 +994,13 @@ function StatsCard({ title, value, icon, color, alert, trend }: {
     );
 }
 
-function SiloCard({ silo, onStockAction, userRole }: { silo: SiloStat; onStockAction: (type: 'in' | 'out', item?: InventoryItem) => void; userRole?: string }) {
+function SiloCard({ silo, onStockAction, permissions }: { silo: SiloStat; onStockAction: (type: 'in' | 'out', item?: InventoryItem) => void; permissions?: Permission[] }) {
     const { can: clientCan } = usePermissions();
 
-    // Use server-side role if available
+    // Prefer the server-resolved list; fall back to the session-backed hook.
     const can = (permission: Permission): boolean => {
-        if (userRole) {
-            return hasPermission(userRole, permission);
+        if (permissions) {
+            return hasPermissionIn(permissions, permission);
         }
         return clientCan(permission);
     };
@@ -2354,11 +2352,11 @@ function LoadCementModal({ silo, onClose }: {
 
 // ==================== VIEW/EDIT ITEM MODAL ====================
 
-function ViewItemModal({ item, locations, onClose, userRole, allCategories }: {
+function ViewItemModal({ item, locations, onClose, permissions, allCategories }: {
     item: InventoryItem;
     locations: StorageLocation[];
     onClose: () => void;
-    userRole?: string;
+    permissions?: Permission[];
     allCategories: string[];
 }) {
     const [activeTabModal, setActiveTabModal] = useState<'details' | 'edit' | 'history' | 'pricing'>('details');
@@ -2746,7 +2744,7 @@ function ViewItemModal({ item, locations, onClose, userRole, allCategories }: {
 
                     {activeTabModal === 'history' && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <TransactionHistory itemId={item.id} userRole={userRole} />
+                            <TransactionHistory itemId={item.id} permissions={permissions} />
                         </div>
                     )}
 
@@ -2777,16 +2775,16 @@ function DetailItem({ label, value, highlight }: { label: string; value: string;
 }
 
 // Transaction History Component
-function TransactionHistory({ itemId, userRole }: { itemId: string; userRole?: string }) {
+function TransactionHistory({ itemId, permissions }: { itemId: string; permissions?: Permission[] }) {
     const [transactions, setTransactions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const { can: clientCan } = usePermissions();
 
-    // Use server-side role if available
+    // Prefer the server-resolved list; fall back to the session-backed hook.
     const can = (permission: Permission): boolean => {
-        if (userRole) {
-            return hasPermission(userRole, permission);
+        if (permissions) {
+            return hasPermissionIn(permissions, permission);
         }
         return clientCan(permission);
     };

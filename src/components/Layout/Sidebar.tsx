@@ -7,7 +7,7 @@ import { LayoutDashboard, Truck, Package, Fuel, FlaskConical, Users, Settings, M
 import { cn } from '@/lib/utils';
 import { signOut } from 'next-auth/react';
 
-import { Permission, hasPermission } from '@/lib/permissions';
+import { Permission, hasPermissionIn } from '@/lib/permissions';
 import PushNotificationPrompt from '@/components/notifications/PushNotificationPrompt';
 
 // Define menu categories with their items
@@ -62,6 +62,7 @@ interface SidebarUser {
     name?: string | null;
     email?: string | null;
     role?: string;
+    permissions?: Permission[];
 }
 
 export function Sidebar({ user }: { user?: SidebarUser }) {
@@ -72,10 +73,11 @@ export function Sidebar({ user }: { user?: SidebarUser }) {
     // Use the server-provided user role directly - no async loading needed!
     const userRole = user?.role;
 
-    // Permission check using server-side user role
+    // Checked against the permission list resolved server-side in the session
+    // callback, so custom roles filter the nav correctly. Passed as a prop rather
+    // than read from usePermissions so the nav renders correctly on first paint.
     const can = (permission: Permission): boolean => {
-        if (!userRole) return false;
-        return hasPermission(userRole, permission);
+        return hasPermissionIn(user?.permissions, permission);
     };
 
     // Client-side sign out that properly clears the session cache

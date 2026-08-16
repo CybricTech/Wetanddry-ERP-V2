@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(sed \"s#'../../../../../Wetanddry-ERP-V2/src/lib/permissions'#'../src/lib/permissions'#\" \"C:/Users/aminu/AppData/Local/Temp/claude/c--Users-aminu-Wetanddry-ERP-V2/99e3c854-83c4-45b9-860b-845cc786282e/scratchpad/verify-phase1.ts\")",
+      "Bash(npx ts-node *)",
+      "Bash(npx eslint *)",
+      "Bash(python -)",
+      "Bash(npx prisma *)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, StartTime, @{n='CmdLine';e={\\(Get-CimInstance Win32_Process -Filter \"ProcessId=$\\($_.Id\\)\"\\).CommandLine}} | Format-List)",
+      "Bash(python -c ' *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(npm run *)"
+    ]
+  }
+}

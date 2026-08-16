@@ -36,7 +36,7 @@ export default async function ReconciliationPage() {
         <ReconciliationClient
             initialReconciliations={reconciliations}
             locations={locations}
-            userRole={userRole}
+            permissions={session.user.permissions ?? []}
             userName={session.user.name || 'User'}
         />
     )

@@ -42,7 +42,7 @@ export default async function SchedulingPage() {
             recipes={recipes}
             silos={silos}
             clients={clients}
-            userRole={userRole}
+            permissions={session.user.permissions ?? []}
             userName={session.user.name || 'User'}
         />
     )

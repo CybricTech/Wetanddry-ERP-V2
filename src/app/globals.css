@@ -10,6 +10,59 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* The built-in CSS easings are too weak to read as intentional. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Entrances: never from scale(0) - things should not appear from nothing. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-rise-in {
+  opacity: 0;
+  animation: rise-in 260ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+.animate-pop-in {
+  animation: pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Reduced motion means gentler, not zero: keep the fade, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise-in,
+  .animate-pop-in {
+    animation-duration: 140ms;
+    animation-name: fade-only;
+  }
+
+  @keyframes fade-only {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 @media (prefers-color-scheme: dark) {

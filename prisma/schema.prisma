@@ -379,12 +379,27 @@ model ExceptionLog {
 
 // User Management Module
 
+// Roles are referenced by name from User.role rather than by foreign key, so the
+// ~170 existing hasPermission(session.user.role, ...) call sites keep working
+// unchanged. Renames must therefore cascade to User.role, and roles with users
+// assigned cannot be deleted - both enforced in src/lib/actions/roles.ts.
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  color       String   @default("blue") // badge token, see ROLE_COLORS
+  isBuiltIn   Boolean  @default(false) // built-ins cannot be renamed or deleted
+  permissions String[] // Permission union values from src/lib/permissions.ts
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
   email     String   @unique
   password  String
-  role      String   @default("Storekeeper") // "Super Admin", "Manager", "Storekeeper", "Accountant"
+  role      String   @default("Storekeeper") // Role.name, not an FK - see Role model
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String?  // ID of admin who created this user

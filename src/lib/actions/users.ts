@@ -9,16 +9,22 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { notifyUserCreated, notifyRoleChanged } from '@/lib/actions/notifications'
 
-// Validation schema for user creation
+// Validation schema for user creation. The role is checked against the Role table
+// rather than the built-in enum so custom roles can be assigned; see isValidRole.
 const CreateUserSchema = z.object({
     name: z.string().min(2, 'Name must be at least 2 characters'),
     email: z.string().email('Invalid email address'),
     password: z.string().min(6, 'Password must be at least 6 characters'),
-    role: z.string().refine(
-        (val) => Object.values(Role).includes(val as Role),
-        'Invalid role'
-    ),
+    role: z.string().min(1, 'Role is required'),
 })
+
+async function isValidRole(name: string): Promise<boolean> {
+    const role = await prisma.role.findUnique({ where: { name }, select: { id: true } })
+    if (role) return true
+    // Fall back to the built-ins so user management keeps working if the Role
+    // table has not been seeded yet.
+    return Object.values(Role).includes(name as Role)
+}
 
 export async function getUsers() {
     const session = await auth()
@@ -77,6 +83,10 @@ export async function createUser(data: {
         return { success: false, error: firstError }
     }
 
+    if (!(await isValidRole(validated.data.role))) {
+        return { success: false, error: 'Invalid role' }
+    }
+
     // Check for duplicate email
     const existingUser = await prisma.user.findUnique({
         where: { email: data.email }
@@ -128,9 +138,7 @@ export async function updateUserRole(userId: string, newRole: string) {
         return { success: false, error: 'Unauthorized' }
     }
 
-    // Basic validation that role is valid
-    const validRoles = Object.values(Role).map(r => r.toString())
-    if (!validRoles.includes(newRole)) {
+    if (!(await isValidRole(newRole))) {
         return { success: false, error: 'Invalid role' }
     }
 

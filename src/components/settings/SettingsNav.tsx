@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { User, Bell, Shield, Building2, Copy, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermissionIn, type Permission } from '@/lib/permissions'
 
 const settingsLinks = [
     { href: '/settings/account', label: 'Account', icon: User, description: 'Profile & password' },
@@ -15,11 +15,11 @@ const settingsLinks = [
     { href: '/settings/duplicates', label: 'Duplicates', icon: Copy, description: 'Duplicate detection alerts', permission: 'manage_system_settings' as const },
 ]
 
-export default function SettingsNav({ userRole }: { userRole: string }) {
+export default function SettingsNav({ permissions }: { permissions: Permission[] }) {
     const pathname = usePathname()
 
     const visibleLinks = settingsLinks.filter(
-        link => !link.permission || hasPermission(userRole, link.permission)
+        link => !link.permission || hasPermissionIn(permissions, link.permission)
     )
 
     return (

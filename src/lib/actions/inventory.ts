@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
-import { checkPermission } from '@/lib/permissions'
+import { checkPermission, hasPermission } from '@/lib/permissions'
 import { formatCurrency } from '@/lib/utils'
 import {
     notifyApprovers,
@@ -175,7 +175,7 @@ export async function createStockTransaction(formData: FormData) {
     // Refinement:
     // If type is IN and user is Storekeeper, status = Pending?
 
-    const isAutoApproved = session.user.role === 'Super Admin' || session.user.role === 'Manager';
+    const isAutoApproved = hasPermission(session.user.role, 'approve_stock_transactions');
     const status = isAutoApproved ? 'Approved' : 'Pending';
 
     // Fetch item details before transaction for use in notifications
@@ -467,9 +467,8 @@ export async function createInventoryItem(formData: FormData) {
     if (!session?.user?.role) throw new Error('Unauthorized')
     checkPermission(session.user.role, 'create_inventory_item')
 
-    // Approval workflow: Storekeepers create items in Pending status
-    // Super Admin and Manager can auto-approve
-    const isAutoApproved = session.user.role === 'Super Admin' || session.user.role === 'Manager'
+    // Approval workflow: users without approval rights create items in Pending status
+    const isAutoApproved = hasPermission(session.user.role, 'approve_inventory_items')
     const status = isAutoApproved ? 'Active' : 'Pending'
 
     const item = await prisma.inventoryItem.create({
@@ -2141,9 +2140,7 @@ export async function getInventoryValuation() {
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    // Only Manager, Accountant, Super Admin can access
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied: Finance data is restricted')
     }
 
@@ -2230,8 +2227,7 @@ export async function getStockMovementFinancials(period: 'today' | '7days' | '30
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied: Finance data is restricted')
     }
 
@@ -2355,8 +2351,7 @@ export async function getCostAnalysis() {
     const session = await auth()
     if (!session?.user?.role) throw new Error('Unauthorized')
 
-    const allowedRoles = ['Super Admin', 'Manager', 'Accountant']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'view_financials')) {
         throw new Error('Access denied: Finance data is restricted')
     }
 

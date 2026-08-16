@@ -15,7 +15,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
                 </div>
 
                 <div className="flex flex-col lg:flex-row gap-6">
-                    <SettingsNav userRole={session.user.role || ''} />
+                    <SettingsNav permissions={session.user.permissions ?? []} />
                     <div className="flex-1 min-w-0">
                         {children}
                     </div>

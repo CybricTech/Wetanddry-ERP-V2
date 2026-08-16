@@ -17,7 +17,7 @@ import DocumentViewerModal from '@/components/shared/DocumentViewerModal'
 import { deleteTruckDocument, deleteTruck } from '@/lib/actions/trucks'
 import { FileText, Trash2, Eye } from 'lucide-react'
 import { usePermissions } from '@/hooks/use-permissions'
-import { hasPermission, Permission, Role } from '@/lib/permissions'
+import { hasPermissionIn, Permission } from '@/lib/permissions'
 
 interface TruckData {
     id: string
@@ -85,10 +85,10 @@ interface TruckData {
 
 interface TruckDetailsClientProps {
     truck: TruckData
-    userRole?: string
+    permissions?: Permission[]
 }
 
-export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClientProps) {
+export default function TruckDetailsClient({ truck, permissions }: TruckDetailsClientProps) {
     const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
     const [showScheduleModal, setShowScheduleModal] = useState(false)
     const [showPartModal, setShowPartModal] = useState(false)
@@ -100,10 +100,11 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
     const { can: clientCan } = usePermissions()
 
-    // Use server-side role if available, otherwise fall back to client-side session
+    // Prefer the server-resolved list so the first paint is correct; fall back to
+    // the session-backed hook when this renders without it.
     const can = (permission: Permission): boolean => {
-        if (userRole) {
-            return hasPermission(userRole, permission)
+        if (permissions) {
+            return hasPermissionIn(permissions, permission)
         }
         return clientCan(permission)
     }
@@ -202,7 +203,7 @@ export default function TruckDetailsClient({ truck, userRole }: TruckDetailsClie
                     </div>
 
                     <div className="flex flex-wrap gap-3">
-                        {userRole === Role.SUPER_ADMIN && (
+                        {can('manage_fleet') && (
                             <>
                                 <button
                                     onClick={() => setShowEditModal(true)}

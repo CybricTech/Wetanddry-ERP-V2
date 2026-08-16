@@ -10,6 +10,8 @@ interface CreateUserModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: (user: any) => void;
+    // From the Role table so custom roles are assignable; falls back to built-ins.
+    roleNames?: string[];
 }
 
 // Password strength calculation
@@ -29,7 +31,7 @@ function getPasswordStrength(password: string): { level: number; label: string; 
     return { level: 5, label: 'Strong', color: 'bg-green-500' };
 }
 
-export default function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalProps) {
+export default function CreateUserModal({ isOpen, onClose, onSuccess, roleNames }: CreateUserModalProps) {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -38,7 +40,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUs
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const roles = Object.values(Role);
+    const roles = roleNames && roleNames.length > 0 ? roleNames : Object.values(Role).map(String);
     const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
 
     const handleSubmit = async (e: React.FormEvent) => {

@@ -1,26 +1,21 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { hasPermission, Permission, Role } from '@/lib/permissions';
-import { useEffect, useRef } from 'react';
+import { hasPermissionIn, Permission, Role } from '@/lib/permissions';
+import { useEffect } from 'react';
 
 export function usePermissions() {
     const { data: session, status, update } = useSession();
     const userRole = session?.user?.role;
-    const previousRoleRef = useRef<string | undefined>(undefined);
 
-    // Force session refresh when component mounts to catch any stale data
-    useEffect(() => {
-        // Only update if we have a session and the role has changed
-        if (status === 'authenticated' && previousRoleRef.current !== userRole) {
-            previousRoleRef.current = userRole;
-        }
-    }, [status, userRole]);
+    // Resolved server-side in the session callback. The browser cannot read the
+    // database, so custom roles are only visible through this list - do not call
+    // hasPermission() here, it would only see the four built-in roles.
+    const permissions = session?.user?.permissions;
 
     // Force update session on mount to ensure fresh data after login
     useEffect(() => {
         if (status === 'authenticated') {
-            // Trigger a session update to ensure we have the latest data
             update();
         }
     }, []); // Only on mount
@@ -30,8 +25,7 @@ export function usePermissions() {
         if (status === 'loading' || status === 'unauthenticated') {
             return false;
         }
-        if (!userRole) return false;
-        return hasPermission(userRole, permission);
+        return hasPermissionIn(permissions, permission);
     };
 
     const is = (role: Role): boolean => {
@@ -46,6 +40,7 @@ export function usePermissions() {
         can,
         is,
         role: userRole,
+        permissions,
         isLoading: status === 'loading',
         isAuthenticated: status === 'authenticated',
         // Expose update function for manual refresh

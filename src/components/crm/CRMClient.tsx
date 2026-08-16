@@ -11,6 +11,7 @@ import {
 import { cn, formatCurrency } from '@/lib/utils'
 import { DatePicker } from '@/components/ui/date-picker'
 import { getClients, createClient, getCRMMetrics } from '@/lib/actions/crm'
+import { hasPermissionIn, type Permission } from '@/lib/permissions'
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -72,11 +73,11 @@ interface CRMMetrics {
 
 interface CRMClientProps {
     initialClients: Client[]
-    userRole: string
+    permissions: Permission[]
     userName: string
 }
 
-export default function CRMClient({ initialClients, userRole, userName }: CRMClientProps) {
+export default function CRMClient({ initialClients, permissions, userName }: CRMClientProps) {
     const [activeTab, setActiveTab] = useState<'clients' | 'analytics'>('clients')
     const [clients, setClients] = useState<Client[]>(initialClients)
     const [analytics, setAnalytics] = useState<CRMMetrics | null>(null)
@@ -90,7 +91,7 @@ export default function CRMClient({ initialClients, userRole, userName }: CRMCli
     const [isPending, startTransition] = useTransition()
     const [loading, setLoading] = useState(false)
 
-    const canManageClients = ['Super Admin', 'Manager'].includes(userRole)
+    const canManageClients = hasPermissionIn(permissions, 'manage_clients')
 
     // Load data based on active tab
     useEffect(() => {

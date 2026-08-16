@@ -46,7 +46,7 @@ export default async function OrdersPage() {
             clients={clients}
             recipes={recipes}
             projects={projects}
-            userRole={userRole}
+            permissions={session.user.permissions ?? []}
             userName={session.user.name || 'User'}
         />
     )

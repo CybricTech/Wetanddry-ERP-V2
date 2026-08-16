@@ -5,7 +5,7 @@ import {
     Calendar, Plus, Clock, CheckCircle, AlertTriangle,
     Play, X, RefreshCw, Building2, ChevronRight
 } from 'lucide-react'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermissionIn, type Permission } from '@/lib/permissions'
 import {
     scheduleProductionRun,
     rescheduleProductionRun,
@@ -40,7 +40,7 @@ interface SchedulingClientProps {
     recipes: { id: string; productCode: string; name: string }[]
     silos: { id: string; name: string; cementItem: any }[]
     clients: { id: string; code: string; name: string }[]
-    userRole: string
+    permissions: Permission[]
     userName: string
 }
 
@@ -49,7 +49,7 @@ export default function SchedulingClient({
     recipes,
     silos,
     clients,
-    userRole,
+    permissions,
     userName
 }: SchedulingClientProps) {
     const [runs, setRuns] = useState<ScheduledRun[]>(initialRuns)
@@ -57,7 +57,7 @@ export default function SchedulingClient({
     const [showScheduleModal, setShowScheduleModal] = useState(false)
     const [showRescheduleModal, setShowRescheduleModal] = useState<ScheduledRun | null>(null)
 
-    const canSchedule = hasPermission(userRole, 'log_production')
+    const canSchedule = hasPermissionIn(permissions, 'log_production')
 
     const refreshData = async () => {
         const data = await getScheduledRuns()

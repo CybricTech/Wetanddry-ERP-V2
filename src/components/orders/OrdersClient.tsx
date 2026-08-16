@@ -7,7 +7,7 @@ import {
     Calendar, Building2, FileText, X, ChevronRight,
     CreditCard, ArrowRight, Check, Box
 } from 'lucide-react'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermissionIn, type Permission } from '@/lib/permissions'
 import { formatCurrency } from '@/lib/utils'
 import {
     createSalesOrder,
@@ -91,7 +91,7 @@ interface OrdersClientProps {
     clients: { id: string; code: string; name: string }[]
     recipes: { id: string; productCode: string; name: string }[]
     projects: { id: string; name: string }[]
-    userRole: string
+    permissions: Permission[]
     userName: string
 }
 
@@ -101,7 +101,7 @@ export default function OrdersClient({
     clients,
     recipes,
     projects,
-    userRole,
+    permissions,
     userName
 }: OrdersClientProps) {
     const [orders, setOrders] = useState<Order[]>(initialOrders || [])
@@ -120,8 +120,8 @@ export default function OrdersClient({
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
     const [showOrderDetail, setShowOrderDetail] = useState(false)
 
-    const canManageOrders = hasPermission(userRole, 'manage_orders')
-    const canApproveOrders = hasPermission(userRole, 'approve_orders')
+    const canManageOrders = hasPermissionIn(permissions, 'manage_orders')
+    const canApproveOrders = hasPermissionIn(permissions, 'approve_orders')
 
     const filteredOrders = orders.filter(order => {
         if (filter.status !== 'all' && order.status !== filter.status) return false

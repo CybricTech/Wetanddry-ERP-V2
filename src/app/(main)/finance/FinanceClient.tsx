@@ -12,6 +12,7 @@ import {
     AlertCircle, Plus, X
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
+import { hasPermissionIn, type Permission } from '@/lib/permissions';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -57,7 +58,7 @@ interface Expense {
 
 // ==================== MAIN COMPONENT ====================
 
-export default function FinanceClient({ currentUser, userRole }: { currentUser: string; userRole: string }) {
+export default function FinanceClient({ currentUser, permissions }: { currentUser: string; permissions: Permission[] }) {
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState<'overview' | 'inventory' | 'fuel' | 'maintenance' | 'expenses'>('overview');
     const [fuelPeriod, setFuelPeriod] = useState<'7days' | '30days' | '90days' | 'custom'>('30days');
@@ -81,8 +82,8 @@ export default function FinanceClient({ currentUser, userRole }: { currentUser: 
     const [trucks, setTrucks] = useState<{ id: string; plateNumber: string }[]>([]);
     const [clientsForSelect, setClientsForSelect] = useState<{ id: string; code: string; name: string }[]>([]);
 
-    const canManageExpenses = userRole ? ['Super Admin', 'Manager', 'Accountant'].includes(userRole) : false;
-    const canApproveExpenses = userRole ? ['Super Admin', 'Manager'].includes(userRole) : false;
+    const canManageExpenses = hasPermissionIn(permissions, 'manage_expenses');
+    const canApproveExpenses = hasPermissionIn(permissions, 'approve_expenses');
 
     useEffect(() => {
         // Only load custom data when both dates are set

@@ -18,5 +18,5 @@ export default async function TruckDetailsPage({ params }: PageProps) {
         notFound()
     }
 
-    return <TruckDetailsClient truck={truck} userRole={session?.user?.role} />
+    return <TruckDetailsClient truck={truck} permissions={session?.user?.permissions} />
 }

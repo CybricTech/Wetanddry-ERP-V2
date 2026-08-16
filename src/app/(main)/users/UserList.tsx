@@ -6,6 +6,7 @@ import { Role } from '@/lib/permissions';
 import { Trash2, Edit2, Check, X, Shield, UserPlus, Key, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import CreateUserModal from './CreateUserModal';
+import { badgeFor } from '@/components/settings/roleColors';
 
 interface User {
     id: string;
@@ -15,14 +16,17 @@ interface User {
     createdAt?: string | Date;
 }
 
-const roleColors: Record<string, string> = {
-    'Super Admin': 'bg-purple-100 text-purple-700 border-purple-200',
-    'Manager': 'bg-blue-100 text-blue-700 border-blue-200',
-    'Storekeeper': 'bg-green-100 text-green-700 border-green-200',
-    'Accountant': 'bg-amber-100 text-amber-700 border-amber-200',
-};
-
-export default function UserList({ initialUsers }: { initialUsers: User[] }) {
+export default function UserList({
+    initialUsers,
+    roleNames,
+    roleColors = {},
+}: {
+    initialUsers: User[];
+    // Comes from the Role table so custom roles are assignable. Falls back to the
+    // built-in enum when rendered without it.
+    roleNames?: string[];
+    roleColors?: Record<string, string>;
+}) {
     const [users, setUsers] = useState<User[]>(initialUsers);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -32,7 +36,7 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
     const [newPassword, setNewPassword] = useState('');
     const [changingPassword, setChangingPassword] = useState(false);
 
-    const roles = Object.values(Role);
+    const roles = roleNames && roleNames.length > 0 ? roleNames : Object.values(Role).map(String);
 
     const handleEditClick = (user: User) => {
         setEditingId(user.id);
@@ -119,7 +123,7 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
             <div className="flex justify-end mb-4">
                 <button
                     onClick={() => setShowCreateModal(true)}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium shadow-lg shadow-blue-500/25"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium shadow-lg shadow-blue-500/25 transition-[background-color,transform] duration-150 ease-out-strong active:scale-[0.97]"
                 >
                     <UserPlus size={20} />
                     Add User
@@ -164,7 +168,7 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                                                 ))}
                                             </select>
                                         ) : (
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border ${roleColors[user.role] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border ${badgeFor(roleColors[user.role])}`}>
                                                 <Shield size={12} className="mr-1" />
                                                 {user.role}
                                             </span>
@@ -177,7 +181,7 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                                                     <button
                                                         onClick={() => handleSaveRole(user.id)}
                                                         disabled={loading}
-                                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors duration-150 active:scale-95"
                                                         title="Save"
                                                     >
                                                         <Check size={18} />
@@ -185,7 +189,7 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                                                     <button
                                                         onClick={handleCancelEdit}
                                                         disabled={loading}
-                                                        className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                                                        className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors duration-150 active:scale-95"
                                                         title="Cancel"
                                                     >
                                                         <X size={18} />
@@ -195,21 +199,21 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                                                 <>
                                                     <button
                                                         onClick={() => handleEditClick(user)}
-                                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-150 active:scale-95"
                                                         title="Edit Role"
                                                     >
                                                         <Edit2 size={18} />
                                                     </button>
                                                     <button
                                                         onClick={() => { setPasswordModal({ open: true, user }); setNewPassword(''); }}
-                                                        className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors duration-150 active:scale-95"
                                                         title="Change Password"
                                                     >
                                                         <Key size={18} />
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(user.id)}
-                                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-150 active:scale-95"
                                                         title="Delete User"
                                                     >
                                                         <Trash2 size={18} />
@@ -235,6 +239,7 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 onSuccess={handleUserCreated}
+                roleNames={roles}
             />
 
             {/* Change Password Modal */}
@@ -249,7 +254,7 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                                 </div>
                                 <button
                                     onClick={() => setPasswordModal({ open: false, user: null })}
-                                    className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+                                    className="p-1 hover:bg-white/20 rounded-lg transition-colors duration-150 active:scale-95"
                                 >
                                     <X size={20} />
                                 </button>

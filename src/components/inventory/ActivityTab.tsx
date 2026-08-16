@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition, useEffect, useCallback } from 'react';
 import { usePermissions } from '@/hooks/use-permissions';
-import { hasPermission, Permission } from '@/lib/permissions';
+import { hasPermissionIn, Permission } from '@/lib/permissions';
 import { useLiveUpdates, formatRefreshTime } from '@/hooks/use-live-updates';
 import { useRouter } from 'next/navigation';
 import {
@@ -76,12 +76,12 @@ interface ActivityTabProps {
     transactions: StockTransaction[];
     pendingApprovals: PendingApproval[];
     pendingCounts: PendingCounts;
-    userRole?: string;
+    permissions?: Permission[];
 }
 
 // ==================== MAIN ACTIVITY TAB COMPONENT ====================
 
-export default function ActivityTab({ transactions, pendingApprovals, pendingCounts, userRole }: ActivityTabProps) {
+export default function ActivityTab({ transactions, pendingApprovals, pendingCounts, permissions }: ActivityTabProps) {
     const [activeSubTab, setActiveSubTab] = useState<'pending' | 'movements' | 'audit'>('pending');
     const [statusFilter, setStatusFilter] = useState<'all' | 'Pending' | 'Approved' | 'Rejected'>('all');
     const [typeFilter, setTypeFilter] = useState<'all' | 'IN' | 'OUT' | 'ADJUSTMENT'>('all');
@@ -90,10 +90,11 @@ export default function ActivityTab({ transactions, pendingApprovals, pendingCou
     const [selectedTransaction, setSelectedTransaction] = useState<StockTransaction | null>(null);
     const { can: clientCan } = usePermissions();
 
-    // Use server-side role if available
+    // Prefer the server-resolved list so the first paint is correct; fall back to
+    // the session-backed hook when this renders without it.
     const can = (permission: Permission): boolean => {
-        if (userRole) {
-            return hasPermission(userRole, permission);
+        if (permissions) {
+            return hasPermissionIn(permissions, permission);
         }
         return clientCan(permission);
     };
@@ -197,7 +198,7 @@ export default function ActivityTab({ transactions, pendingApprovals, pendingCou
                 <PendingSubTab
                     pendingApprovals={pendingApprovals}
                     counts={pendingCounts}
-                    userRole={userRole}
+                    permissions={permissions}
                 />
             )}
 
@@ -233,16 +234,17 @@ export default function ActivityTab({ transactions, pendingApprovals, pendingCou
 
 // ==================== PENDING SUB-TAB ====================
 
-function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApprovals: PendingApproval[]; counts: PendingCounts; userRole?: string }) {
+function PendingSubTab({ pendingApprovals, counts, permissions }: { pendingApprovals: PendingApproval[]; counts: PendingCounts; permissions?: Permission[] }) {
     const [isPending, startTransition] = useTransition();
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [confirmItem, setConfirmItem] = useState<PendingApproval | null>(null);
     const { can: clientCan } = usePermissions();
 
-    // Use server-side role if available
+    // Prefer the server-resolved list so the first paint is correct; fall back to
+    // the session-backed hook when this renders without it.
     const can = (permission: Permission): boolean => {
-        if (userRole) {
-            return hasPermission(userRole, permission);
+        if (permissions) {
+            return hasPermissionIn(permissions, permission);
         }
         return clientCan(permission);
     };
@@ -271,7 +273,10 @@ function PendingSubTab({ pendingApprovals, counts, userRole }: { pendingApproval
     };
 
     const handleApprove = async (item: PendingApproval) => {
-        if (userRole === 'Super Admin') {
+        // Not access control - the approve button is already gated by
+        // approve_stock_transactions above. This only decides whether an
+        // already-authorised user passes through a confirmation step.
+        if (can('require_approval_confirmation')) {
             setConfirmItem(item);
         } else {
             executeApproval(item);

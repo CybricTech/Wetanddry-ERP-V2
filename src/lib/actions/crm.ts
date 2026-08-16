@@ -594,8 +594,7 @@ export async function approveExpense(id: string) {
     if (!session?.user?.role) throw new Error('Unauthorized')
     checkPermission(session.user.role, 'manage_expenses')
 
-    // Only Manager and Super Admin can approve
-    if (!['Super Admin', 'Manager'].includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'approve_expenses')) {
         return { success: false, message: 'Only Managers can approve expenses' }
     }
 
@@ -625,7 +624,7 @@ export async function rejectExpense(id: string, reason: string) {
     if (!session?.user?.role) throw new Error('Unauthorized')
     checkPermission(session.user.role, 'manage_expenses')
 
-    if (!['Super Admin', 'Manager'].includes(session.user.role)) {
+    if (!hasPermission(session.user.role, 'approve_expenses')) {
         return { success: false, message: 'Only Managers can reject expenses' }
     }
 
