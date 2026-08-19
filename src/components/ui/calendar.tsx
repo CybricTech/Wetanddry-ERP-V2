@@ -26,20 +26,28 @@ function Calendar({
                 // ignored by v9 and leave the calendar unstyled.
                 months: "relative flex flex-col sm:flex-row gap-4",
                 month: "w-full space-y-4",
-                nav: "absolute inset-x-0 top-0 z-10 flex items-center justify-between",
+                // This bar spans the full width above the caption, so it must not
+                // capture pointer events - it would otherwise sit on top of the
+                // month/year dropdowns and swallow their clicks. The buttons opt
+                // back in individually.
+                nav: "absolute inset-x-0 top-0 z-10 flex items-center justify-between pointer-events-none",
                 button_previous: cn(
+                    "pointer-events-auto",
                     "h-7 w-7 bg-transparent p-0 text-gray-500 inline-flex items-center justify-center rounded-md border border-gray-200 transition-colors",
                     "hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50",
                     "disabled:opacity-30 disabled:pointer-events-none"
                 ),
                 button_next: cn(
+                    "pointer-events-auto",
                     "h-7 w-7 bg-transparent p-0 text-gray-500 inline-flex items-center justify-center rounded-md border border-gray-200 transition-colors",
                     "hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50",
                     "disabled:opacity-30 disabled:pointer-events-none"
                 ),
                 // Caption sits between the prev/next buttons, which are absolutely
                 // positioned at the edges - the padding keeps the dropdowns clear of them.
-                month_caption: "flex h-7 items-center justify-center px-9",
+                // min-h rather than a fixed h: the bordered dropdowns are taller
+                // than the plain caption label this row used to hold.
+                month_caption: "flex min-h-7 items-center justify-center px-9",
                 // Also rendered inside each dropdown as the visible face of the
                 // transparent <select>, so it carries the padding and chevron gap.
                 caption_label: cn(
