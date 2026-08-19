@@ -13,7 +13,12 @@
       "Bash(npm run *)",
       "Bash(npx tsx *)",
       "Bash(git checkout *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(node -p \"require\\('./node_modules/react-day-picker/package.json'\\).version\")",
+      "Bash(NODE_OPTIONS=--max-old-space-size=6144 npm run build)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\aminu\\Wetanddry-ERP-V2\\scripts"
     ]
   }
 }

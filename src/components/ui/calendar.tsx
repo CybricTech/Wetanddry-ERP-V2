@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react"
 import { DayPicker } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
@@ -37,8 +37,26 @@ function Calendar({
                     "hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50",
                     "disabled:opacity-30 disabled:pointer-events-none"
                 ),
-                month_caption: "flex h-7 items-center justify-center",
-                caption_label: "text-sm font-medium text-gray-800",
+                // Caption sits between the prev/next buttons, which are absolutely
+                // positioned at the edges - the padding keeps the dropdowns clear of them.
+                month_caption: "flex h-7 items-center justify-center px-9",
+                // Also rendered inside each dropdown as the visible face of the
+                // transparent <select>, so it carries the padding and chevron gap.
+                caption_label: cn(
+                    "inline-flex items-center gap-1 whitespace-nowrap",
+                    "px-2 py-1 text-sm font-medium text-gray-800"
+                ),
+                // Shown when captionLayout="dropdown". react-day-picker renders a real
+                // <select> over a label, so the select is made transparent and stretched
+                // across the styled wrapper to stay accessible while looking native.
+                dropdowns: "flex items-center gap-1.5",
+                dropdown_root: cn(
+                    "relative inline-flex items-center rounded-md border border-gray-200 bg-white",
+                    "transition-colors hover:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500"
+                ),
+                dropdown: "absolute inset-0 h-full w-full cursor-pointer opacity-0",
+                months_dropdown: "",
+                years_dropdown: "",
                 month_grid: "w-full border-collapse",
                 weekdays: "flex",
                 weekday: "w-9 font-normal text-[0.8rem] text-gray-400",
@@ -72,9 +90,18 @@ function Calendar({
                 ...classNames,
             }}
             components={{
-                Chevron: ({ orientation }) => {
-                    const Icon = orientation === "left" ? ChevronLeft : ChevronRight
-                    return <Icon className="h-4 w-4" />
+                Chevron: ({ orientation, className: chevronClassName }) => {
+                    // "down" is used by the month/year dropdowns; without it they
+                    // would fall through to a right-pointing arrow.
+                    const Icon =
+                        orientation === "left"
+                            ? ChevronLeft
+                            : orientation === "up"
+                                ? ChevronUp
+                                : orientation === "down"
+                                    ? ChevronDown
+                                    : ChevronRight
+                    return <Icon className={cn("h-4 w-4 shrink-0", chevronClassName)} />
                 },
             }}
             {...props}
