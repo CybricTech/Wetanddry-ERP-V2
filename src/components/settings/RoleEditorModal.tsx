@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
     PAGE_PERMISSIONS,
     BEHAVIOUR_FLAGS,
+    APPROVAL_PERMISSIONS,
     ROLE_COLORS,
     type Permission,
 } from '@/lib/permissions';
@@ -102,6 +103,7 @@ export default function RoleEditorModal({ open, role, onClose, onSaved }: Props)
     };
 
     const pageCount = PAGE_PERMISSIONS.filter((p) => selected.has(p.permission)).length;
+    const approvalCount = APPROVAL_PERMISSIONS.filter((p) => selected.has(p.permission)).length;
 
     return (
         <div
@@ -227,6 +229,58 @@ export default function RoleEditorModal({ open, role, onClose, onSaved }: Props)
                                             {on && <Check size={14} className="text-white" />}
                                         </span>
                                         <span className="text-sm font-medium">{page.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Approval rights - separate from page access because these decide who
+                        signs off on work, not who can open a page. */}
+                    <div className="pt-2 border-t border-gray-100">
+                        <div className="flex items-baseline justify-between mt-4 mb-1">
+                            <h4 className="text-sm font-semibold text-gray-900">Approval rights</h4>
+                            <span className="text-xs text-gray-500 tabular-nums">
+                                {approvalCount} of {APPROVAL_PERMISSIONS.length} selected
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-3">
+                            Who can sign off on work submitted by others. A user needs page access as
+                            well before an approval queue becomes visible to them.
+                        </p>
+                        <div className="space-y-2">
+                            {APPROVAL_PERMISSIONS.map((approval) => {
+                                const on = selected.has(approval.permission);
+                                return (
+                                    <button
+                                        key={approval.permission}
+                                        type="button"
+                                        onClick={() => toggle(approval.permission)}
+                                        disabled={locked || saving}
+                                        aria-pressed={on}
+                                        className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors duration-150 disabled:cursor-not-allowed ${
+                                            on
+                                                ? 'bg-emerald-50 border-emerald-600'
+                                                : 'bg-white border-gray-200 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        <span
+                                            className={`mt-0.5 h-5 w-5 rounded-md border flex items-center justify-center shrink-0 transition-colors duration-150 ${
+                                                on ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-gray-300'
+                                            }`}
+                                        >
+                                            {on && <Check size={14} className="text-white" />}
+                                        </span>
+                                        <span>
+                                            <span
+                                                className={`block text-sm font-medium ${
+                                                    on ? 'text-emerald-900' : 'text-gray-900'
+                                                }`}
+                                            >
+                                                {approval.label}
+                                            </span>
+                                            <span className="block text-xs text-gray-500 mt-0.5">{approval.help}</span>
+                                        </span>
                                     </button>
                                 );
                             })}

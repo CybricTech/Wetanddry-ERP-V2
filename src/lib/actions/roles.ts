@@ -8,6 +8,7 @@ import {
     checkPermission,
     PAGE_PERMISSIONS,
     BEHAVIOUR_FLAGS,
+    APPROVAL_PERMISSIONS,
     ROLE_COLORS,
     type Permission,
 } from '@/lib/permissions'
@@ -18,6 +19,7 @@ import { invalidateRoleCache } from '@/lib/roles.server'
 const ASSIGNABLE: ReadonlySet<string> = new Set<string>([
     ...PAGE_PERMISSIONS.map((p) => p.permission),
     ...BEHAVIOUR_FLAGS.map((f) => f.permission),
+    ...APPROVAL_PERMISSIONS.map((p) => p.permission),
 ])
 
 const RoleInput = z.object({

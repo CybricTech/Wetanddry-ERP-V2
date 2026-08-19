@@ -19,6 +19,8 @@ const NOTIFICATION_CATEGORIES: {
                 { type: 'stock_transaction_pending', label: 'Stock Transactions', description: 'When stock movements need approval' },
                 { type: 'material_request_pending', label: 'Material Requests', description: 'When material requests are submitted' },
                 { type: 'expense_pending', label: 'Expense Approvals', description: 'When expenses are submitted for approval' },
+                { type: 'maintenance_approval_pending', label: 'Maintenance Approvals', description: 'When maintenance records or service schedules need approval' },
+                { type: 'fuel_request_pending', label: 'Fuel Requests', description: 'When fuel requests are submitted for approval' },
             ],
         },
         {
@@ -33,6 +35,10 @@ const NOTIFICATION_CATEGORIES: {
                 { type: 'request_rejected', label: 'Request Rejected', description: 'When your material requests are rejected' },
                 { type: 'expense_approved', label: 'Expense Approved', description: 'When your expenses are approved' },
                 { type: 'expense_rejected', label: 'Expense Rejected', description: 'When your expenses are rejected' },
+                { type: 'maintenance_approved', label: 'Maintenance Approved', description: 'When your maintenance records or schedules are approved' },
+                { type: 'maintenance_rejected', label: 'Maintenance Rejected', description: 'When your maintenance records or schedules are rejected' },
+                { type: 'fuel_request_approved', label: 'Fuel Request Approved', description: 'When your fuel request is approved and issued' },
+                { type: 'fuel_request_rejected', label: 'Fuel Request Rejected', description: 'When your fuel request is rejected' },
             ],
         },
         {
@@ -43,6 +49,7 @@ const NOTIFICATION_CATEGORIES: {
                 { type: 'silo_level_critical', label: 'Silo Level Critical', description: 'When cement silos are running low' },
                 { type: 'material_shortage', label: 'Material Shortages', description: 'When production materials are insufficient' },
                 { type: 'reconciliation_completed', label: 'Reconciliation Completed', description: 'When stock reconciliation is finished' },
+                { type: 'repair_overdue', label: 'Repairs Overdue', description: 'When an item sent for repair is past its expected return date' },
             ],
         },
         {

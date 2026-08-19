@@ -4,9 +4,10 @@ import { getInventoryStats } from '@/lib/actions/inventory';
 import { getFuelLogs } from '@/lib/actions/fuel';
 import { getExceptions } from '@/lib/actions/exceptions';
 import { getRecipes } from '@/lib/actions/production';
+import { getAllPendingApprovals } from '@/lib/actions/approvals';
 import {
     Truck, Package, Droplet, AlertOctagon, Factory,
-    TrendingUp, Activity, ArrowRight
+    TrendingUp, Activity, ArrowRight, CheckSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
@@ -18,12 +19,13 @@ export default async function Dashboard() {
     const session = await auth();
 
     // Parallel data fetching
-    const [trucks, inventory, fuelLogs, exceptions, recipes] = await Promise.all([
+    const [trucks, inventory, fuelLogs, exceptions, recipes, approvals] = await Promise.all([
         getTrucks(),
         getInventoryStats(),
         getFuelLogs(),
         getExceptions(),
-        getRecipes()
+        getRecipes(),
+        getAllPendingApprovals()
     ]);
 
     // Derived Stats
@@ -83,6 +85,54 @@ export default async function Dashboard() {
                     alert={unresolvedExceptions > 0}
                 />
             </div>
+
+            {/* Everything waiting on this user, across every module. Each row links to
+                the page that owns the approve/reject controls for that kind of item. */}
+            {approvals.total > 0 && (
+                <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                                <CheckSquare size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">Awaiting your approval</h3>
+                                <p className="text-sm text-gray-500">
+                                    {approvals.total} item{approvals.total === 1 ? '' : 's'} across the system
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                        {approvals.entries.slice(0, 8).map(entry => (
+                            <Link
+                                key={`${entry.kind}-${entry.id}`}
+                                href={entry.href}
+                                className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
+                            >
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                                            {entry.module}
+                                        </span>
+                                        <span className="font-medium text-gray-900 truncate">{entry.title}</span>
+                                    </div>
+                                    <p className="text-sm text-gray-500 truncate mt-0.5">
+                                        {entry.detail}
+                                        {entry.requestedBy && ` · by ${entry.requestedBy}`}
+                                    </p>
+                                </div>
+                                <ArrowRight size={16} className="text-gray-400 shrink-0" />
+                            </Link>
+                        ))}
+                        {approvals.total > 8 && (
+                            <div className="px-6 py-3 text-sm text-gray-500">
+                                and {approvals.total - 8} more
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

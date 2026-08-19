@@ -5,11 +5,13 @@ import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
 import { auth } from '@/auth'
-import { checkPermission } from '@/lib/permissions'
+import { checkPermission, hasPermission } from '@/lib/permissions'
 import {
     notifyMaintenanceDue,
     notifyDocumentExpiring,
-    notifySparePartsLow
+    notifySparePartsLow,
+    notifyApprovers,
+    notifyRequester
 } from '@/lib/actions/notifications'
 
 // ============ TRUCK CRUD OPERATIONS ============
@@ -159,7 +161,11 @@ export async function createMaintenanceRecord(formData: FormData): Promise<{ suc
         if (!session?.user?.role) return { error: 'Unauthorized' }
         checkPermission(session.user.role, 'manage_maintenance')
 
-        await prisma.maintenanceRecord.create({
+        // Users who can approve do not queue behind themselves.
+        const isAutoApproved = hasPermission(session.user.role, 'approve_maintenance')
+        const actor = session.user.name || session.user.email || 'System'
+
+        const record = await prisma.maintenanceRecord.create({
             data: {
                 truckId,
                 type,
@@ -169,17 +175,28 @@ export async function createMaintenanceRecord(formData: FormData): Promise<{ suc
                 status: status || 'Completed',
                 notes: notes || null,
                 performedBy: performedBy || null,
+                approvalStatus: isAutoApproved ? 'Approved' : 'Pending',
+                requestedBy: actor,
+                approvedBy: isAutoApproved ? actor : null,
+                approvedAt: isAutoApproved ? new Date() : null,
             },
         })
 
-        // Update truck's last service date
-        await prisma.truck.update({
-            where: { id: truckId },
-            data: {
-                lastServiceDate: new Date(date),
-                mileage: mileageAtService ? parseInt(mileageAtService) : undefined
-            },
-        })
+        if (isAutoApproved) {
+            // Side effects belong to approval, not creation - a pending record must not
+            // move the truck's service history. applyMaintenanceRecordToTruck is the one
+            // place that does it, shared with approveMaintenanceRecord().
+            await applyMaintenanceRecordToTruck(record.id)
+        } else {
+            const truck = await prisma.truck.findUnique({ where: { id: truckId } })
+            notifyApprovers(
+                'maintenance_approval_pending',
+                `Maintenance approval needed: ${truck?.plateNumber ?? 'truck'}`,
+                `${actor} logged "${type}" costing ${parseFloat(cost).toLocaleString()} and needs your approval.`,
+                'maintenance_record',
+                record.id
+            ).catch(console.error)
+        }
 
         revalidatePath(`/trucks/${truckId}`)
         revalidatePath('/trucks')
@@ -188,6 +205,35 @@ export async function createMaintenanceRecord(formData: FormData): Promise<{ suc
         console.error('Failed to create maintenance record:', error)
         return { error: error instanceof Error ? error.message : 'Failed to create maintenance record' }
     }
+}
+
+/**
+ * Applies an approved maintenance record to its truck. Split out so creation by an
+ * approver and later approval of someone else's record go through identical logic.
+ */
+async function applyMaintenanceRecordToTruck(recordId: string) {
+    const record = await prisma.maintenanceRecord.findUnique({
+        where: { id: recordId },
+        include: { truck: true },
+    })
+    if (!record) return
+
+    // Records can now be approved out of order - an older one signed off after a newer
+    // one must not drag the truck's service history or odometer backwards.
+    const isNewerService =
+        !record.truck.lastServiceDate || record.date > record.truck.lastServiceDate
+    const isHigherMileage =
+        record.mileageAtService != null && record.mileageAtService > record.truck.mileage
+
+    if (!isNewerService && !isHigherMileage) return
+
+    await prisma.truck.update({
+        where: { id: record.truckId },
+        data: {
+            ...(isNewerService ? { lastServiceDate: record.date } : {}),
+            ...(isHigherMileage ? { mileage: record.mileageAtService! } : {}),
+        },
+    })
 }
 
 export async function getMaintenanceRecords(truckId?: string) {
@@ -222,7 +268,10 @@ export async function createMaintenanceSchedule(formData: FormData): Promise<{ s
         if (!session?.user?.role) return { error: 'Unauthorized' }
         checkPermission(session.user.role, 'manage_maintenance')
 
-        await prisma.maintenanceSchedule.create({
+        const isAutoApproved = hasPermission(session.user.role, 'approve_maintenance')
+        const actor = session.user.name || session.user.email || 'System'
+
+        const schedule = await prisma.maintenanceSchedule.create({
             data: {
                 truckId,
                 type,
@@ -234,8 +283,23 @@ export async function createMaintenanceSchedule(formData: FormData): Promise<{ s
                 priority: priority || 'Normal',
                 notes: notes || null,
                 isActive: true,
+                approvalStatus: isAutoApproved ? 'Approved' : 'Pending',
+                requestedBy: actor,
+                approvedBy: isAutoApproved ? actor : null,
+                approvedAt: isAutoApproved ? new Date() : null,
             },
         })
+
+        if (!isAutoApproved) {
+            const truck = await prisma.truck.findUnique({ where: { id: truckId } })
+            notifyApprovers(
+                'maintenance_approval_pending',
+                `Service schedule approval needed: ${truck?.plateNumber ?? 'truck'}`,
+                `${actor} set up a "${type}" schedule that needs your approval before it raises alerts.`,
+                'maintenance_schedule',
+                schedule.id
+            ).catch(console.error)
+        }
 
         revalidatePath(`/trucks/${truckId}`)
         revalidatePath('/trucks')
@@ -254,6 +318,246 @@ export async function getMaintenanceSchedules(truckId?: string) {
         },
         orderBy: { nextDueDate: 'asc' },
     })
+}
+
+// ============ MAINTENANCE APPROVALS ============
+
+export async function getPendingMaintenanceApprovals() {
+    const session = await auth()
+    if (!session?.user?.role || !hasPermission(session.user.role, 'approve_maintenance')) {
+        return { records: [], schedules: [] }
+    }
+
+    const [records, schedules] = await Promise.all([
+        prisma.maintenanceRecord.findMany({
+            where: { approvalStatus: 'Pending' },
+            include: { truck: true },
+            orderBy: { createdAt: 'desc' },
+        }),
+        prisma.maintenanceSchedule.findMany({
+            where: { approvalStatus: 'Pending' },
+            include: { truck: true },
+            orderBy: { createdAt: 'desc' },
+        }),
+    ])
+
+    return { records, schedules }
+}
+
+/** Resolves the user id behind a requestedBy label so the decision can be sent back. */
+async function findRequesterId(requestedBy: string | null): Promise<string | null> {
+    if (!requestedBy) return null
+    const user = await prisma.user.findFirst({
+        where: { OR: [{ name: requestedBy }, { email: requestedBy }] },
+        select: { id: true },
+    })
+    return user?.id ?? null
+}
+
+export async function approveMaintenanceRecord(id: string): Promise<{ success: true } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'approve_maintenance')
+
+        const record = await prisma.maintenanceRecord.findUnique({
+            where: { id },
+            include: { truck: true },
+        })
+        if (!record) return { error: 'Maintenance record not found' }
+        if (record.approvalStatus !== 'Pending') {
+            return { error: `This record has already been ${record.approvalStatus.toLowerCase()}` }
+        }
+
+        const actor = session.user.name || session.user.email || 'System'
+
+        await prisma.maintenanceRecord.update({
+            where: { id },
+            data: {
+                approvalStatus: 'Approved',
+                approvedBy: actor,
+                approvedAt: new Date(),
+                rejectionReason: null,
+            },
+        })
+
+        // Deferred side effects - only now does the truck's history move, and only now
+        // does a schedule this record completed advance to its next interval.
+        await applyMaintenanceRecordToTruck(id)
+        if (record.scheduleId) {
+            await rollScheduleForward(record.scheduleId)
+        }
+
+        const requesterId = await findRequesterId(record.requestedBy)
+        if (requesterId) {
+            notifyRequester(
+                requesterId,
+                'maintenance_approved',
+                `Maintenance approved: ${record.truck.plateNumber}`,
+                `${actor} approved your "${record.type}" record.`,
+                'maintenance_record',
+                id
+            ).catch(console.error)
+        }
+
+        revalidatePath(`/trucks/${record.truckId}`)
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to approve maintenance record:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to approve maintenance record' }
+    }
+}
+
+export async function rejectMaintenanceRecord(id: string, reason: string): Promise<{ success: true } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'approve_maintenance')
+
+        const trimmedReason = (reason || '').trim()
+        if (!trimmedReason) return { error: 'A reason is required to reject a record' }
+
+        const record = await prisma.maintenanceRecord.findUnique({
+            where: { id },
+            include: { truck: true },
+        })
+        if (!record) return { error: 'Maintenance record not found' }
+        if (record.approvalStatus !== 'Pending') {
+            return { error: `This record has already been ${record.approvalStatus.toLowerCase()}` }
+        }
+
+        const actor = session.user.name || session.user.email || 'System'
+
+        await prisma.maintenanceRecord.update({
+            where: { id },
+            data: {
+                approvalStatus: 'Rejected',
+                approvedBy: actor,
+                approvedAt: new Date(),
+                rejectionReason: trimmedReason,
+            },
+        })
+
+        const requesterId = await findRequesterId(record.requestedBy)
+        if (requesterId) {
+            notifyRequester(
+                requesterId,
+                'maintenance_rejected',
+                `Maintenance rejected: ${record.truck.plateNumber}`,
+                `${actor} rejected your "${record.type}" record: ${trimmedReason}`,
+                'maintenance_record',
+                id
+            ).catch(console.error)
+        }
+
+        revalidatePath(`/trucks/${record.truckId}`)
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to reject maintenance record:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to reject maintenance record' }
+    }
+}
+
+export async function approveMaintenanceSchedule(id: string): Promise<{ success: true } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'approve_maintenance')
+
+        const schedule = await prisma.maintenanceSchedule.findUnique({
+            where: { id },
+            include: { truck: true },
+        })
+        if (!schedule) return { error: 'Schedule not found' }
+        if (schedule.approvalStatus !== 'Pending') {
+            return { error: `This schedule has already been ${schedule.approvalStatus.toLowerCase()}` }
+        }
+
+        const actor = session.user.name || session.user.email || 'System'
+
+        await prisma.maintenanceSchedule.update({
+            where: { id },
+            data: {
+                approvalStatus: 'Approved',
+                approvedBy: actor,
+                approvedAt: new Date(),
+                rejectionReason: null,
+            },
+        })
+
+        const requesterId = await findRequesterId(schedule.requestedBy)
+        if (requesterId) {
+            notifyRequester(
+                requesterId,
+                'maintenance_approved',
+                `Service schedule approved: ${schedule.truck.plateNumber}`,
+                `${actor} approved your "${schedule.type}" schedule. It will now raise service alerts.`,
+                'maintenance_schedule',
+                id
+            ).catch(console.error)
+        }
+
+        revalidatePath(`/trucks/${schedule.truckId}`)
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to approve maintenance schedule:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to approve schedule' }
+    }
+}
+
+export async function rejectMaintenanceSchedule(id: string, reason: string): Promise<{ success: true } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'approve_maintenance')
+
+        const trimmedReason = (reason || '').trim()
+        if (!trimmedReason) return { error: 'A reason is required to reject a schedule' }
+
+        const schedule = await prisma.maintenanceSchedule.findUnique({
+            where: { id },
+            include: { truck: true },
+        })
+        if (!schedule) return { error: 'Schedule not found' }
+        if (schedule.approvalStatus !== 'Pending') {
+            return { error: `This schedule has already been ${schedule.approvalStatus.toLowerCase()}` }
+        }
+
+        const actor = session.user.name || session.user.email || 'System'
+
+        await prisma.maintenanceSchedule.update({
+            where: { id },
+            data: {
+                approvalStatus: 'Rejected',
+                approvedBy: actor,
+                approvedAt: new Date(),
+                rejectionReason: trimmedReason,
+                isActive: false,
+            },
+        })
+
+        const requesterId = await findRequesterId(schedule.requestedBy)
+        if (requesterId) {
+            notifyRequester(
+                requesterId,
+                'maintenance_rejected',
+                `Service schedule rejected: ${schedule.truck.plateNumber}`,
+                `${actor} rejected your "${schedule.type}" schedule: ${trimmedReason}`,
+                'maintenance_schedule',
+                id
+            ).catch(console.error)
+        }
+
+        revalidatePath(`/trucks/${schedule.truckId}`)
+        revalidatePath('/trucks')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to reject maintenance schedule:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to reject schedule' }
+    }
 }
 
 export async function updateMaintenanceSchedule(id: string, formData: FormData) {
@@ -290,13 +594,20 @@ export async function completeScheduledMaintenance(scheduleId: string, formData:
     if (!session?.user?.role) throw new Error('Unauthorized')
     checkPermission(session.user.role, 'manage_maintenance')
 
+    if (schedule.approvalStatus !== 'Approved') {
+        throw new Error('This schedule is still awaiting approval and cannot be completed')
+    }
+
     const notes = formData.get('notes') as string
     const performedBy = formData.get('performedBy') as string
     const cost = formData.get('cost') as string
 
-    // Create maintenance record
+    // The record this produces follows the same approval rule as a manually logged
+    // one: an approver's completion stands, anyone else's waits for sign-off.
+    const isAutoApproved = hasPermission(session.user.role, 'approve_maintenance')
+    const actor = session.user.name || session.user.email || 'System'
 
-    await prisma.maintenanceRecord.create({
+    const record = await prisma.maintenanceRecord.create({
         data: {
             truckId: schedule.truckId,
             type: schedule.type,
@@ -306,34 +617,56 @@ export async function completeScheduledMaintenance(scheduleId: string, formData:
             status: 'Completed',
             notes: notes || null,
             performedBy: performedBy || null,
+            scheduleId,
+            approvalStatus: isAutoApproved ? 'Approved' : 'Pending',
+            requestedBy: actor,
+            approvedBy: isAutoApproved ? actor : null,
+            approvedAt: isAutoApproved ? new Date() : null,
         },
     })
 
-    // Update schedule with next due date/mileage
-    const newDueDate = schedule.intervalDays
-        ? new Date(Date.now() + schedule.intervalDays * 24 * 60 * 60 * 1000)
-        : null
-    const newDueMileage = schedule.intervalMileage
-        ? schedule.truck.mileage + schedule.intervalMileage
-        : null
+    if (!isAutoApproved) {
+        notifyApprovers(
+            'maintenance_approval_pending',
+            `Maintenance approval needed: ${schedule.truck.plateNumber}`,
+            `${actor} completed the scheduled "${schedule.type}" and it needs your approval.`,
+            'maintenance_record',
+            record.id
+        ).catch(console.error)
+    }
+
+    // Rolling the schedule forward and touching the truck are both consequences of the
+    // service being accepted, so an unapproved completion leaves the schedule due. It
+    // rolls forward when the record is approved instead.
+    if (isAutoApproved) {
+        await rollScheduleForward(scheduleId)
+        await applyMaintenanceRecordToTruck(record.id)
+    }
+
+    revalidatePath(`/trucks/${schedule.truckId}`)
+    revalidatePath('/trucks')
+}
+
+/** Advances a schedule to its next due date/mileage after an accepted service. */
+async function rollScheduleForward(scheduleId: string) {
+    const schedule = await prisma.maintenanceSchedule.findUnique({
+        where: { id: scheduleId },
+        include: { truck: true },
+    })
+    if (!schedule) return
 
     await prisma.maintenanceSchedule.update({
         where: { id: scheduleId },
         data: {
             lastCompletedDate: new Date(),
-            nextDueDate: newDueDate,
-            nextDueMileage: newDueMileage,
+            nextDueDate: schedule.intervalDays
+                ? new Date(Date.now() + schedule.intervalDays * 24 * 60 * 60 * 1000)
+                : null,
+            nextDueMileage: schedule.intervalMileage
+                ? schedule.truck.mileage + schedule.intervalMileage
+                : null,
         },
     })
-
-    // Update truck's last service date
-    await prisma.truck.update({
-        where: { id: schedule.truckId },
-        data: { lastServiceDate: new Date() },
-    })
-
-    revalidatePath(`/trucks/${schedule.truckId}`)
-    revalidatePath('/trucks')
 }
 
 // ============ COMPONENT LIFECYCLE TRACKING (PARTS) ============
@@ -512,6 +845,7 @@ export async function getFleetAlerts() {
     const overdueSchedules = await prisma.maintenanceSchedule.findMany({
         where: {
             isActive: true,
+            approvalStatus: 'Approved', // A pending schedule is inert until signed off
             OR: [
                 { nextDueDate: { lt: now } },
             ]
@@ -567,6 +901,9 @@ export async function getFleetStats() {
     const trucks = await prisma.truck.findMany()
     const maintenanceRecords = await prisma.maintenanceRecord.findMany({
         where: {
+            // Pending and rejected records are excluded: unapproved spend must not
+            // land in fleet cost totals.
+            approvalStatus: 'Approved',
             date: {
                 gte: new Date(new Date().getFullYear(), 0, 1) // This year
             }
@@ -666,6 +1003,7 @@ export async function checkMaintenanceDueByDate() {
         const dueSchedules = await prisma.maintenanceSchedule.findMany({
             where: {
                 isActive: true,
+                approvalStatus: 'Approved', // A pending schedule is inert until signed off
                 nextDueDate: {
                     lte: sevenDaysFromNow,
                     gte: now
@@ -698,6 +1036,7 @@ export async function checkMaintenanceDueByMileage() {
         const schedules = await prisma.maintenanceSchedule.findMany({
             where: {
                 isActive: true,
+                approvalStatus: 'Approved', // A pending schedule is inert until signed off
                 nextDueMileage: { not: null }
             },
             include: { truck: true }

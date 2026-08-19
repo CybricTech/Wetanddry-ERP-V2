@@ -23,11 +23,15 @@ export type NotificationType =
     | 'low_stock_alert'
     | 'silo_level_critical'
     | 'reconciliation_completed'
+    | 'repair_overdue'
     // Fleet & Maintenance
     | 'maintenance_due_date'
     | 'maintenance_due_mileage'
     | 'document_expiring'
     | 'spare_parts_low'
+    | 'maintenance_approval_pending'
+    | 'maintenance_approved'
+    | 'maintenance_rejected'
     // Exceptions
     | 'new_exception'
     | 'exception_resolved'
@@ -46,6 +50,9 @@ export type NotificationType =
     | 'expense_rejected'
     // Fuel
     | 'fuel_deposit'
+    | 'fuel_request_pending'
+    | 'fuel_request_approved'
+    | 'fuel_request_rejected'
     // System
     | 'user_created'
     | 'role_changed';
@@ -85,12 +92,18 @@ const NOTIFICATION_CONFIG: Record<NotificationType, {
     low_stock_alert: { defaultPriority: 'critical', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER, Role.STOREKEEPER] },
     silo_level_critical: { defaultPriority: 'critical', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER, Role.STOREKEEPER] },
     reconciliation_completed: { defaultPriority: 'medium', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER] },
+    repair_overdue: { defaultPriority: 'high', requiredPermissions: ['view_inventory'] },
 
     // Fleet & Maintenance → Super Admin, Manager
     maintenance_due_date: { defaultPriority: 'high', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER] },
     maintenance_due_mileage: { defaultPriority: 'high', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER] },
     document_expiring: { defaultPriority: 'medium', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER] },
     spare_parts_low: { defaultPriority: 'medium', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER] },
+
+    // Maintenance approvals → approvers get the request, requester gets the decision
+    maintenance_approval_pending: { defaultPriority: 'high', requiredPermissions: ['approve_maintenance'] },
+    maintenance_approved: { defaultPriority: 'medium' },
+    maintenance_rejected: { defaultPriority: 'medium' },
 
     // Exceptions → new_exception to Super Admin, Manager; resolved to all with view_exceptions
     new_exception: { defaultPriority: 'high', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER] },
@@ -114,6 +127,11 @@ const NOTIFICATION_CONFIG: Record<NotificationType, {
 
     // Fuel → Super Admin, Manager
     fuel_deposit: { defaultPriority: 'low', targetRoles: [Role.SUPER_ADMIN, Role.MANAGER] },
+
+    // Fuel approvals → approvers get the request, requester gets the decision
+    fuel_request_pending: { defaultPriority: 'high', requiredPermissions: ['approve_fuel_requests'] },
+    fuel_request_approved: { defaultPriority: 'medium' },
+    fuel_request_rejected: { defaultPriority: 'medium' },
 
     // System/Admin → Super Admin only
     user_created: { defaultPriority: 'low', targetRoles: [Role.SUPER_ADMIN] },
@@ -164,24 +182,45 @@ export async function createNotification(input: CreateNotificationInput) {
     }
 }
 
+/**
+ * The users who currently hold `permission`, resolved against the Role table so
+ * delegated custom roles are included. Exported because callers that need to
+ * de-duplicate per recipient (e.g. recurring overdue alerts) must know who the
+ * recipients are before deciding whom to notify.
+ */
+export async function getUsersWithPermission(permission: Permission) {
+    // The Role table is authoritative once seeded; the built-in table is only a
+    // fallback for a table that has no rows yet.
+    const roleCount = await prisma.role.count();
+
+    const rolesWithPermission =
+        roleCount > 0
+            ? (
+                  await prisma.role.findMany({
+                      where: { permissions: { has: permission } },
+                      select: { name: true },
+                  })
+              ).map((r) => r.name)
+            : Object.entries(ROLE_PERMISSIONS)
+                  .filter(([, permissions]) => permissions.includes(permission))
+                  .map(([role]) => role);
+
+    return prisma.user.findMany({
+        where: { role: { in: rolesWithPermission } },
+        select: { id: true },
+    });
+}
+
 // Create notifications for all users with a specific permission
 export async function notifyByPermission(
     permission: Permission,
     notification: Omit<CreateNotificationInput, 'userId'>
 ) {
     try {
-        // Find all roles that have this permission
-        const rolesWithPermission = Object.entries(ROLE_PERMISSIONS)
-            .filter(([_, permissions]) => permissions.includes(permission))
-            .map(([role]) => role);
-
-        // Get all users with those roles
-        const users = await prisma.user.findMany({
-            where: {
-                role: { in: rolesWithPermission },
-            },
-            select: { id: true },
-        });
+        // Roles live in the database, so a custom role that has been delegated an
+        // approval right must be included too - reading only ROLE_PERMISSIONS would
+        // silently skip its users.
+        const users = await getUsersWithPermission(permission);
 
         // Create notifications for each user
         const notifications = await Promise.all(
@@ -446,7 +485,12 @@ export async function updateNotificationPreferences(preferences: Record<string, 
 // These are convenience functions to trigger notifications from other server actions
 
 export async function notifyApprovers(
-    type: 'new_inventory_item' | 'stock_transaction_pending' | 'material_request_pending',
+    type:
+        | 'new_inventory_item'
+        | 'stock_transaction_pending'
+        | 'material_request_pending'
+        | 'maintenance_approval_pending'
+        | 'fuel_request_pending',
     title: string,
     message: string,
     entityType: string,
@@ -717,9 +761,14 @@ export async function notifySparePartsLow(partId: string, partName: string, quan
 export async function runScheduledAlertChecks() {
     console.log('[Notifications] Running scheduled alert checks...');
 
+    // Imported lazily: inventory.ts already imports this module, so a static import
+    // here would close the cycle.
+    const { checkOverdueRepairs } = await import('@/lib/actions/inventory');
+
     const results = {
         lowStock: await checkAndNotifyLowStock(),
         siloCritical: await checkAndNotifySiloCritical(),
+        overdueRepairs: await checkOverdueRepairs(),
     };
 
     console.log('[Notifications] Scheduled checks complete:', results);

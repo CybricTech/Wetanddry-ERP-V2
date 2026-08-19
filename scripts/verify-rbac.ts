@@ -56,6 +56,18 @@ async function main() {
     }
     console.log(`  ${PHASE1.length * ROLES.length} assertions`);
 
+    console.log('\nPhase 3 - approval rights ship Super Admin only');
+    for (const perm of ['approve_maintenance', 'approve_fuel_requests'] as Permission[]) {
+        for (const role of ROLES) {
+            check(`${perm} / ${role}`, hasPermission(role, perm), role === 'Super Admin');
+        }
+    }
+    // Creating still has to be open to non-approvers, otherwise nothing ever reaches
+    // the queue in the first place.
+    check('Manager keeps manage_maintenance', hasPermission('Manager', 'manage_maintenance'), true);
+    check('Storekeeper keeps log_fuel', hasPermission('Storekeeper', 'log_fuel'), true);
+    check('Accountant keeps log_fuel', hasPermission('Accountant', 'log_fuel'), true);
+
     console.log('\nPhase 2 - built-in permission sets intact');
     for (const role of Object.values(Role)) {
         const missing = ROLE_PERMISSIONS[role].filter((p) => !hasPermission(role, p));

@@ -1,5 +1,14 @@
 import React from 'react';
-import { getInventoryStats, getStorageLocations, getAllStockTransactions, getPendingApprovals, getCustomCategories } from '@/lib/actions/inventory';
+import {
+    getInventoryStats,
+    getStorageLocations,
+    getAllStockTransactions,
+    getPendingApprovals,
+    getCustomCategories,
+    getCustomCategoryDetails,
+    getRepairs,
+    getRepairStats
+} from '@/lib/actions/inventory';
 import InventoryClient from '@/components/inventory/InventoryClient';
 import { auth } from '@/auth';
 
@@ -12,12 +21,24 @@ export default async function InventoryPage() {
     const currentUser = session?.user?.name || session?.user?.email || 'Unknown';
 
     // Fetch all required data in parallel
-    const [inventoryStats, locations, transactionsData, pendingData, customCategories] = await Promise.all([
+    const [
+        inventoryStats,
+        locations,
+        transactionsData,
+        pendingData,
+        customCategories,
+        customCategoryDetails,
+        repairs,
+        repairStats
+    ] = await Promise.all([
         getInventoryStats(),
         getStorageLocations(),
         getAllStockTransactions({ limit: 100 }),
         getPendingApprovals(),
-        getCustomCategories()
+        getCustomCategories(),
+        getCustomCategoryDetails(),
+        getRepairs(),
+        getRepairStats()
     ]);
 
     const { items, totalItems, lowStockItems, totalValue, expiringItems, siloStats } = inventoryStats;
@@ -37,6 +58,9 @@ export default async function InventoryPage() {
             currentUser={currentUser}
             permissions={session?.user?.permissions}
             customCategories={customCategories}
+            customCategoryDetails={customCategoryDetails}
+            repairs={JSON.parse(JSON.stringify(repairs))}
+            repairStats={repairStats}
         />
     );
 }

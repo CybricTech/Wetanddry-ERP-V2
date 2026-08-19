@@ -6,7 +6,7 @@ import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
 import { DatePicker } from '@/components/ui/date-picker'
 
-function SubmitButton() {
+function SubmitButton({ needsApproval }: { needsApproval: boolean }) {
     const { pending } = useFormStatus()
     return (
         <button
@@ -14,7 +14,7 @@ function SubmitButton() {
             disabled={pending}
             className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 transition-all font-semibold shadow-lg shadow-green-500/25 disabled:opacity-50"
         >
-            {pending ? 'Scheduling...' : 'Schedule Maintenance'}
+            {pending ? 'Scheduling...' : needsApproval ? 'Submit for Approval' : 'Schedule Maintenance'}
         </button>
     )
 }
@@ -22,12 +22,15 @@ function SubmitButton() {
 interface ScheduleMaintenanceModalProps {
     truckId: string
     truckMileage: number
+    /** False when this user's schedules queue for someone else to sign off. */
+    canApprove?: boolean
     onClose: () => void
 }
 
-export default function ScheduleMaintenanceModal({ truckId, truckMileage, onClose }: ScheduleMaintenanceModalProps) {
+export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApprove = false, onClose }: ScheduleMaintenanceModalProps) {
     const [intervalType, setIntervalType] = useState('date')
     const [error, setError] = useState<string | null>(null)
+    const needsApproval = !canApprove
 
     const handleSubmit = async (formData: FormData) => {
         setError(null)
@@ -68,6 +71,16 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, onClos
                         <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2">
                             <AlertCircle size={16} />
                             {error}
+                        </div>
+                    )}
+
+                    {needsApproval && (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 rounded-lg flex items-start gap-2">
+                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                            <span>
+                                This schedule goes to the Super Admin for approval. It will not raise
+                                service alerts until it is approved.
+                            </span>
                         </div>
                     )}
 
@@ -205,7 +218,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, onClos
                             Cancel
                         </button>
                         <div className="flex-1">
-                            <SubmitButton />
+                            <SubmitButton needsApproval={needsApproval} />
                         </div>
                     </div>
                 </form>

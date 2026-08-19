@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import {
     ArrowLeft, Truck, Calendar, Edit, CheckCircle, AlertCircle,
     Plus, Wrench, Cog, CalendarClock, AlertTriangle, Clock,
-    Gauge, MapPin, DollarSign, Battery, CircleDot
+    Gauge, MapPin, DollarSign, Battery, CircleDot, Check, X, Loader2
 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import AddMaintenanceModal from './AddMaintenanceModal'
@@ -14,7 +14,14 @@ import AddPartModal from './AddPartModal'
 import AddDocumentModal from './AddDocumentModal'
 import EditTruckModal from './EditTruckModal'
 import DocumentViewerModal from '@/components/shared/DocumentViewerModal'
-import { deleteTruckDocument, deleteTruck } from '@/lib/actions/trucks'
+import {
+    deleteTruckDocument,
+    deleteTruck,
+    approveMaintenanceRecord,
+    rejectMaintenanceRecord,
+    approveMaintenanceSchedule,
+    rejectMaintenanceSchedule
+} from '@/lib/actions/trucks'
 import { FileText, Trash2, Eye } from 'lucide-react'
 import { usePermissions } from '@/hooks/use-permissions'
 import { hasPermissionIn, Permission } from '@/lib/permissions'
@@ -39,6 +46,10 @@ interface TruckData {
         status: string
         notes: string | null
         performedBy: string | null
+        approvalStatus: string
+        requestedBy: string | null
+        approvedBy: string | null
+        rejectionReason: string | null
     }[]
     maintenanceSchedules: {
         id: string
@@ -50,6 +61,10 @@ interface TruckData {
         nextDueMileage: number | null
         priority: string
         isActive: boolean
+        approvalStatus: string
+        requestedBy: string | null
+        approvedBy: string | null
+        rejectionReason: string | null
     }[]
     parts: {
         id: string
@@ -141,9 +156,9 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
         return 'bg-green-100 text-green-700'
     }
 
-    // Calculate alerts
+    // Calculate alerts. An unapproved schedule is inert, so it raises nothing.
     const overdueSchedules = truck.maintenanceSchedules.filter(s =>
-        s.isActive && s.nextDueDate && new Date(s.nextDueDate) < new Date()
+        s.isActive && s.approvalStatus === 'Approved' && s.nextDueDate && new Date(s.nextDueDate) < new Date()
     )
     const partsDueForReplacement = truck.parts.filter(p =>
         p.status === 'Active' && p.expectedReplacementDate && new Date(p.expectedReplacementDate) < new Date()
@@ -158,11 +173,16 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
 
     const totalAlerts = overdueSchedules.length + partsDueForReplacement.length
 
-    // Calculate maintenance cost this year
+    // Calculate maintenance cost this year. Unapproved spend is excluded, matching
+    // getFleetStats() so the truck page and the fleet dashboard agree.
     const thisYear = new Date().getFullYear()
     const maintenanceCostThisYear = truck.maintenanceRecords
-        .filter(r => new Date(r.date).getFullYear() === thisYear)
+        .filter(r => r.approvalStatus === 'Approved' && new Date(r.date).getFullYear() === thisYear)
         .reduce((sum, r) => sum + r.cost, 0)
+
+    const pendingMaintenanceCount =
+        truck.maintenanceRecords.filter(r => r.approvalStatus === 'Pending').length +
+        truck.maintenanceSchedules.filter(s => s.approvalStatus === 'Pending').length
 
     return (
         <div className="space-y-6">
@@ -363,7 +383,12 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                 {formatCurrency(maintenanceCostThisYear)}
                             </div>
                             <div className="text-blue-100 text-sm mt-1">
-                                {truck.maintenanceRecords.filter(r => new Date(r.date).getFullYear() === thisYear).length} services performed
+                                {truck.maintenanceRecords.filter(r => r.approvalStatus === 'Approved' && new Date(r.date).getFullYear() === thisYear).length} services performed
+                                {pendingMaintenanceCount > 0 && (
+                                    <span className="text-amber-200">
+                                        {' '}· {pendingMaintenanceCount} awaiting approval
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -411,13 +436,14 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Mileage</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Cost</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Approval</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Notes</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
                                 {truck.maintenanceRecords.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-12 text-center">
+                                        <td colSpan={7} className="px-6 py-12 text-center">
                                             <Wrench className="mx-auto text-gray-300 mb-3" size={40} />
                                             <p className="text-gray-500">No maintenance records yet</p>
                                             <button
@@ -430,7 +456,14 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                     </tr>
                                 ) : (
                                     truck.maintenanceRecords.map((record) => (
-                                        <tr key={record.id} className="hover:bg-gray-50 transition-colors">
+                                        <tr
+                                            key={record.id}
+                                            className={cn(
+                                                'hover:bg-gray-50 transition-colors',
+                                                record.approvalStatus === 'Pending' && 'bg-amber-50/50',
+                                                record.approvalStatus === 'Rejected' && 'bg-red-50/40'
+                                            )}
+                                        >
                                             <td className="px-6 py-4 text-sm text-gray-900">
                                                 {new Date(record.date).toLocaleDateString()}
                                             </td>
@@ -445,6 +478,16 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                                 <span className="inline-block px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                                                     {record.status}
                                                 </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <ApprovalCell
+                                                    approvalStatus={record.approvalStatus}
+                                                    rejectionReason={record.rejectionReason}
+                                                    requestedBy={record.requestedBy}
+                                                    canApprove={can('approve_maintenance')}
+                                                    onApprove={() => approveMaintenanceRecord(record.id)}
+                                                    onReject={(reason) => rejectMaintenanceRecord(record.id, reason)}
+                                                />
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
                                                 {record.notes || '-'}
@@ -575,23 +618,29 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                             </div>
                         ) : (
                             truck.maintenanceSchedules.map((schedule) => {
-                                const isOverdue = schedule.nextDueDate && new Date(schedule.nextDueDate) < new Date()
+                                const isApproved = schedule.approvalStatus === 'Approved'
+                                // Only an approved schedule can be overdue - a pending one is inert.
+                                const isOverdue = isApproved && schedule.nextDueDate && new Date(schedule.nextDueDate) < new Date()
                                 return (
                                     <div
                                         key={schedule.id}
                                         className={cn(
-                                            "flex items-center justify-between p-4 rounded-xl border transition-all",
+                                            "flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 rounded-xl border transition-all",
                                             isOverdue
                                                 ? "bg-red-50 border-red-200"
-                                                : "bg-gray-50 border-gray-200 hover:border-gray-300"
+                                                : schedule.approvalStatus === 'Pending'
+                                                    ? "bg-amber-50 border-amber-200"
+                                                    : schedule.approvalStatus === 'Rejected'
+                                                        ? "bg-red-50/40 border-red-100"
+                                                        : "bg-gray-50 border-gray-200 hover:border-gray-300"
                                         )}
                                     >
                                         <div className="flex items-center gap-4">
                                             <div className={cn(
-                                                "w-10 h-10 rounded-xl flex items-center justify-center",
-                                                isOverdue ? "bg-red-100" : "bg-green-100"
+                                                "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                                                isOverdue ? "bg-red-100" : isApproved ? "bg-green-100" : "bg-amber-100"
                                             )}>
-                                                <CalendarClock size={20} className={isOverdue ? "text-red-600" : "text-green-600"} />
+                                                <CalendarClock size={20} className={isOverdue ? "text-red-600" : isApproved ? "text-green-600" : "text-amber-600"} />
                                             </div>
                                             <div>
                                                 <div className="font-medium text-gray-900">{schedule.type}</div>
@@ -602,7 +651,17 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-4 flex-wrap">
+                                            {!isApproved && (
+                                                <ApprovalCell
+                                                    approvalStatus={schedule.approvalStatus}
+                                                    rejectionReason={schedule.rejectionReason}
+                                                    requestedBy={schedule.requestedBy}
+                                                    canApprove={can('approve_maintenance')}
+                                                    onApprove={() => approveMaintenanceSchedule(schedule.id)}
+                                                    onReject={(reason) => rejectMaintenanceSchedule(schedule.id, reason)}
+                                                />
+                                            )}
                                             <div className="text-right">
                                                 <div className={cn(
                                                     "text-sm font-medium",
@@ -731,6 +790,7 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                 <AddMaintenanceModal
                     truckId={truck.id}
                     truckMileage={truck.mileage}
+                    canApprove={can('approve_maintenance')}
                     onClose={() => setShowMaintenanceModal(false)}
                 />
             )}
@@ -738,6 +798,7 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                 <ScheduleMaintenanceModal
                     truckId={truck.id}
                     truckMileage={truck.mileage}
+                    canApprove={can('approve_maintenance')}
                     onClose={() => setShowScheduleModal(false)}
                 />
             )}
@@ -802,6 +863,144 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                     </div>
                 </div>
             )}
+        </div>
+    )
+}
+
+/**
+ * Approval state for a maintenance record or schedule, plus the approve/reject controls
+ * for users who hold approve_maintenance. Rejecting demands a reason, which is then
+ * shown in place of the badge so the requester can see why.
+ */
+function ApprovalCell({
+    approvalStatus,
+    rejectionReason,
+    requestedBy,
+    canApprove,
+    onApprove,
+    onReject,
+}: {
+    approvalStatus: string
+    rejectionReason: string | null
+    requestedBy: string | null
+    canApprove: boolean
+    onApprove: () => Promise<{ success: true } | { error: string }>
+    onReject: (reason: string) => Promise<{ success: true } | { error: string }>
+}) {
+    const [isPending, startTransition] = useTransition()
+    const [rejecting, setRejecting] = useState(false)
+    const [reason, setReason] = useState('')
+    const [error, setError] = useState<string | null>(null)
+
+    if (approvalStatus === 'Approved') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                <CheckCircle size={12} />
+                Approved
+            </span>
+        )
+    }
+
+    if (approvalStatus === 'Rejected') {
+        return (
+            <div className="max-w-[14rem]">
+                <span
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800"
+                    title={rejectionReason || undefined}
+                >
+                    <X size={12} />
+                    Rejected
+                </span>
+                {rejectionReason && (
+                    <p className="text-xs text-red-600 mt-1 truncate" title={rejectionReason}>
+                        {rejectionReason}
+                    </p>
+                )}
+            </div>
+        )
+    }
+
+    const run = (action: () => Promise<{ success: true } | { error: string }>) => {
+        setError(null)
+        startTransition(async () => {
+            const result = await action()
+            if ('error' in result) {
+                setError(result.error)
+                return
+            }
+            setRejecting(false)
+            setReason('')
+        })
+    }
+
+    return (
+        <div className="max-w-[16rem]">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">
+                <Clock size={12} />
+                Pending Approval
+            </span>
+            {requestedBy && (
+                <p className="text-xs text-gray-500 mt-1 truncate">by {requestedBy}</p>
+            )}
+
+            {canApprove && !rejecting && (
+                <div className="flex items-center gap-1.5 mt-2">
+                    <button
+                        type="button"
+                        onClick={() => run(onApprove)}
+                        disabled={isPending}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                        {isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        Approve
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setRejecting(true); setError(null) }}
+                        disabled={isPending}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-50"
+                    >
+                        Reject
+                    </button>
+                </div>
+            )}
+
+            {canApprove && rejecting && (
+                <div className="mt-2 space-y-1.5">
+                    <input
+                        type="text"
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        autoFocus
+                        placeholder="Reason for rejection"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && reason.trim()) run(() => onReject(reason))
+                            if (e.key === 'Escape') setRejecting(false)
+                        }}
+                        className="w-full px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-500/10 outline-none transition-all"
+                    />
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => run(() => onReject(reason))}
+                            disabled={isPending || !reason.trim()}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                        >
+                            {isPending ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                            Confirm
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setRejecting(false); setReason('') }}
+                            className="px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
         </div>
     )
 }
