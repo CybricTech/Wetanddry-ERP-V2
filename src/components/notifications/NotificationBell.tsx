@@ -66,9 +66,15 @@ const getEntityRoute = (entityType: string | null, entityId: string | null): str
         inventory_item: `/inventory`,
         stock_transaction: `/inventory`,
         material_request: `/inventory`,
+        inventory_repair: `/inventory`,
         exception: `/exceptions`,
         truck: `/trucks/${entityId}`,
         maintenance: `/trucks`,
+        // Approval notifications carry the record/schedule id, not the truck id, so
+        // these land on the fleet list rather than a specific truck page.
+        maintenance_record: `/trucks`,
+        maintenance_schedule: `/trucks`,
+        fuel_request: `/fuel`,
         staff: `/staff`,
         user: `/users`,
     }

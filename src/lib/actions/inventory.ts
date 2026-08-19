@@ -9,7 +9,9 @@ import {
     notifyApprovers,
     notifyRequester,
     checkAndNotifyLowStock,
-    checkAndNotifySiloCritical
+    checkAndNotifySiloCritical,
+    createNotification,
+    getUsersWithPermission
 } from '@/lib/actions/notifications'
 
 // ==================== INVENTORY STATS & QUERIES ====================
@@ -2668,6 +2670,10 @@ export async function getItemsWithPriceChanges(days: number = 30) {
 
 // ==================== CUSTOM INVENTORY CATEGORIES ====================
 
+// Kept in code rather than the database: these are structural to the app (recipes,
+// valuation and reporting all branch on them) and must never be renamed away.
+const BUILT_IN_CATEGORIES = ['Raw Material', 'Consumable', 'Equipment', 'Asset', 'Scraps', 'Lubricants']
+
 export async function getCustomCategories() {
     const categories = await prisma.customInventoryCategory.findMany({
         orderBy: { name: 'asc' }
@@ -2675,7 +2681,42 @@ export async function getCustomCategories() {
     return categories.map(c => c.name)
 }
 
+// Full records for the management surface. getCustomCategories() stays name-only
+// because every picker in the app consumes it as a string list.
+export async function getCustomCategoryDetails() {
+    const session = await auth()
+    if (!session?.user?.role || !hasPermission(session.user.role, 'view_inventory')) {
+        return []
+    }
+
+    const categories = await prisma.customInventoryCategory.findMany({
+        orderBy: { name: 'asc' }
+    })
+
+    // Categories are referenced by string, not FK, so usage has to be counted by name.
+    const counts = await prisma.inventoryItem.groupBy({
+        by: ['category'],
+        _count: { _all: true },
+    })
+    const usage = new Map(counts.map(c => [c.category, c._count._all]))
+
+    return categories.map(c => ({
+        id: c.id,
+        name: c.name,
+        createdBy: c.createdBy,
+        createdAt: c.createdAt,
+        itemCount: usage.get(c.name) ?? 0,
+    }))
+}
+
 export async function createCustomCategory(name: string) {
+    const session = await auth()
+    if (!session?.user?.role) {
+        throw new Error('Unauthorized')
+    }
+    // Anyone who may add an item may name the category it goes in.
+    checkPermission(session.user.role, 'create_inventory_item')
+
     if (!name || name.trim().length === 0) {
         throw new Error('Category name is required')
     }
@@ -2683,8 +2724,7 @@ export async function createCustomCategory(name: string) {
     const trimmedName = name.trim()
 
     // Check built-in categories
-    const builtIn = ['Raw Material', 'Consumable', 'Equipment', 'Asset', 'Scraps', 'Lubricants']
-    if (builtIn.includes(trimmedName)) {
+    if (BUILT_IN_CATEGORIES.includes(trimmedName)) {
         throw new Error(`"${trimmedName}" is already a built-in category`)
     }
 
@@ -2696,8 +2736,7 @@ export async function createCustomCategory(name: string) {
         throw new Error(`Category "${trimmedName}" already exists`)
     }
 
-    const session = await auth()
-    const createdBy = session?.user?.name || session?.user?.email || 'System'
+    const createdBy = session.user.name || session.user.email || 'System'
 
     await prisma.customInventoryCategory.create({
         data: {
@@ -2708,5 +2747,521 @@ export async function createCustomCategory(name: string) {
 
     revalidatePath('/inventory')
     return { success: true, name: trimmedName }
+}
+
+export async function renameCustomCategory(id: string, newName: string) {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_inventory')
+
+        const trimmedName = (newName || '').trim()
+        if (!trimmedName) return { error: 'Category name is required' }
+
+        if (BUILT_IN_CATEGORIES.includes(trimmedName)) {
+            return { error: `"${trimmedName}" is already a built-in category` }
+        }
+
+        const category = await prisma.customInventoryCategory.findUnique({ where: { id } })
+        if (!category) return { error: 'Category not found' }
+        if (category.name === trimmedName) return { success: true as const }
+
+        const clash = await prisma.customInventoryCategory.findUnique({ where: { name: trimmedName } })
+        if (clash) return { error: `Category "${trimmedName}" already exists` }
+
+        // InventoryItem.category is a string, not an FK, so a rename would orphan every
+        // item still pointing at the old name. Block it rather than silently diverge.
+        const inUse = await prisma.inventoryItem.count({ where: { category: category.name } })
+        if (inUse > 0) {
+            return {
+                error: `Cannot rename "${category.name}" - ${inUse} item${inUse === 1 ? '' : 's'} still use${inUse === 1 ? 's' : ''} it. Move them to another category first.`
+            }
+        }
+
+        await prisma.customInventoryCategory.update({
+            where: { id },
+            data: { name: trimmedName },
+        })
+
+        revalidatePath('/inventory')
+        return { success: true as const }
+    } catch (error) {
+        console.error('Failed to rename custom category:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to rename category' }
+    }
+}
+
+export async function deleteCustomCategory(id: string) {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_inventory')
+
+        const category = await prisma.customInventoryCategory.findUnique({ where: { id } })
+        if (!category) return { error: 'Category not found' }
+
+        const inUse = await prisma.inventoryItem.count({ where: { category: category.name } })
+        if (inUse > 0) {
+            return {
+                error: `Cannot delete "${category.name}" - ${inUse} item${inUse === 1 ? '' : 's'} still use${inUse === 1 ? 's' : ''} it. Move them to another category first.`
+            }
+        }
+
+        await prisma.customInventoryCategory.delete({ where: { id } })
+
+        revalidatePath('/inventory')
+        return { success: true as const }
+    } catch (error) {
+        console.error('Failed to delete custom category:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to delete category' }
+    }
+}
+
+// ==================== INVENTORY REPAIRS ====================
+
+// Repairs move real stock: the units sent out leave inventory and come back on return,
+// each leg written as a StockTransaction so the ledger, valuation and audit log agree.
+// Repairs themselves are not approved - manage_inventory is enough to send and receive.
+
+export type RepairWithItem = Awaited<ReturnType<typeof getRepairs>>[number]
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24
+
+/** Whole days between two dates, positive when `to` is later. */
+function daysBetween(from: Date, to: Date): number {
+    return Math.floor((to.getTime() - from.getTime()) / MS_PER_DAY)
+}
+
+export async function getRepairs(status?: string) {
+    const session = await auth()
+    if (!session?.user?.role || !hasPermission(session.user.role, 'view_inventory')) {
+        return []
+    }
+
+    const repairs = await prisma.inventoryRepair.findMany({
+        where: status && status !== 'All' ? { status } : undefined,
+        include: {
+            item: { include: { location: true } },
+        },
+        orderBy: { sentDate: 'desc' },
+    })
+
+    const now = new Date()
+
+    return repairs
+        .map(repair => {
+            const isActive = repair.status === 'Out for Repair'
+            const isOverdue = isActive && repair.expectedReturnDate < now
+            return {
+                ...repair,
+                // Derived, never persisted - a stored flag would go stale between writes.
+                isOverdue,
+                daysOut: daysBetween(repair.sentDate, repair.actualReturnDate ?? now),
+                daysOverdue: isOverdue ? daysBetween(repair.expectedReturnDate, now) : 0,
+                daysRemaining: isActive && !isOverdue ? daysBetween(now, repair.expectedReturnDate) : 0,
+            }
+        })
+        .sort((a, b) => {
+            // Overdue first, then soonest-expected, so the rows needing chasing lead.
+            if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1
+            if (a.status === 'Out for Repair' && b.status === 'Out for Repair') {
+                return a.expectedReturnDate.getTime() - b.expectedReturnDate.getTime()
+            }
+            if (a.status === 'Out for Repair') return -1
+            if (b.status === 'Out for Repair') return 1
+            return b.sentDate.getTime() - a.sentDate.getTime()
+        })
+}
+
+export async function getRepairStats() {
+    const session = await auth()
+    if (!session?.user?.role || !hasPermission(session.user.role, 'view_inventory')) {
+        return { currentlyOut: 0, overdue: 0, returnedThisMonth: 0, costThisMonth: 0 }
+    }
+
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    const [out, overdue, returnedThisMonth, costAggregate] = await Promise.all([
+        prisma.inventoryRepair.count({ where: { status: 'Out for Repair' } }),
+        prisma.inventoryRepair.count({
+            where: { status: 'Out for Repair', expectedReturnDate: { lt: now } },
+        }),
+        prisma.inventoryRepair.count({
+            where: {
+                status: { in: ['Returned', 'Returned - Unrepairable'] },
+                actualReturnDate: { gte: startOfMonth },
+            },
+        }),
+        prisma.inventoryRepair.aggregate({
+            _sum: { actualCost: true },
+            where: { actualReturnDate: { gte: startOfMonth } },
+        }),
+    ])
+
+    return {
+        currentlyOut: out,
+        overdue,
+        returnedThisMonth,
+        costThisMonth: costAggregate._sum.actualCost ?? 0,
+    }
+}
+
+export async function sendItemForRepair(formData: FormData) {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_inventory')
+
+        const itemId = formData.get('itemId') as string
+        const quantity = parseFloat(formData.get('quantity') as string)
+        const sentDateStr = formData.get('sentDate') as string
+        const expectedReturnDateStr = formData.get('expectedReturnDate') as string
+        const issueDescription = ((formData.get('issueDescription') as string) || '').trim()
+        const vendor = ((formData.get('vendor') as string) || '').trim() || null
+        const contactPhone = ((formData.get('contactPhone') as string) || '').trim() || null
+        const estimatedCostRaw = formData.get('estimatedCost') as string
+        const notes = ((formData.get('notes') as string) || '').trim() || null
+
+        if (!itemId) return { error: 'Select an item to send for repair' }
+        if (!issueDescription) return { error: 'Describe the fault before sending the item out' }
+        if (isNaN(quantity) || quantity <= 0) return { error: 'Quantity must be greater than zero' }
+        if (!expectedReturnDateStr) return { error: 'Expected return date is required' }
+
+        const sentDate = sentDateStr ? new Date(sentDateStr) : new Date()
+        const expectedReturnDate = new Date(expectedReturnDateStr)
+        if (expectedReturnDate < sentDate) {
+            return { error: 'Expected return date cannot be before the date sent' }
+        }
+
+        const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
+        if (!item) return { error: 'Item not found' }
+        if (quantity > item.quantity) {
+            return { error: `Only ${item.quantity} ${item.unit} of ${item.name} available` }
+        }
+
+        const performedBy = session.user.name || session.user.email || 'System'
+        const estimatedCost = estimatedCostRaw ? parseFloat(estimatedCostRaw) : null
+
+        await prisma.$transaction(async (tx) => {
+            const repair = await tx.inventoryRepair.create({
+                data: {
+                    itemId,
+                    quantity,
+                    sentDate,
+                    expectedReturnDate,
+                    vendor,
+                    contactPhone,
+                    issueDescription,
+                    estimatedCost: estimatedCost !== null && !isNaN(estimatedCost) ? estimatedCost : null,
+                    status: 'Out for Repair',
+                    sentBy: performedBy,
+                    notes,
+                },
+            })
+
+            const newQuantity = item.quantity - quantity
+            await tx.inventoryItem.update({
+                where: { id: itemId },
+                data: {
+                    quantity: newQuantity,
+                    totalValue: newQuantity * item.unitCost,
+                },
+            })
+
+            await tx.stockTransaction.create({
+                data: {
+                    itemId,
+                    type: 'OUT',
+                    quantity,
+                    reason: 'Sent for repair',
+                    status: 'Approved',
+                    performedBy,
+                    approvedBy: performedBy,
+                    approvedAt: new Date(),
+                    notes: `Repair ${repair.id}${vendor ? ` - ${vendor}` : ''}`,
+                },
+            })
+        })
+
+        checkAndNotifyLowStock(itemId).catch(console.error)
+
+        revalidatePath('/inventory')
+        return { success: true as const }
+    } catch (error) {
+        console.error('Failed to send item for repair:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to send item for repair' }
+    }
+}
+
+export async function returnRepairedItem(repairId: string, formData: FormData) {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_inventory')
+
+        const unrepairable = formData.get('unrepairable') === 'true'
+        const returnDateStr = formData.get('actualReturnDate') as string
+        const quantityReturnedRaw = formData.get('quantityReturned') as string
+        const actualCostRaw = formData.get('actualCost') as string
+        const receivedBy = ((formData.get('receivedBy') as string) || '').trim()
+            || session.user.name
+            || 'System'
+        const notes = ((formData.get('notes') as string) || '').trim() || null
+
+        const repair = await prisma.inventoryRepair.findUnique({
+            where: { id: repairId },
+            include: { item: true },
+        })
+        if (!repair) return { error: 'Repair not found' }
+        if (repair.status !== 'Out for Repair') {
+            return { error: `This repair is already marked "${repair.status}"` }
+        }
+
+        const actualReturnDate = returnDateStr ? new Date(returnDateStr) : new Date()
+        const actualCost = actualCostRaw ? parseFloat(actualCostRaw) : null
+
+        // Unrepairable units never come back into stock, so the returned quantity is
+        // meaningless there - the whole batch is written off.
+        const quantityReturned = unrepairable
+            ? 0
+            : quantityReturnedRaw
+                ? parseFloat(quantityReturnedRaw)
+                : repair.quantity
+
+        if (!unrepairable) {
+            if (isNaN(quantityReturned) || quantityReturned <= 0) {
+                return { error: 'Quantity returned must be greater than zero' }
+            }
+            if (quantityReturned > repair.quantity) {
+                return { error: `Only ${repair.quantity} ${repair.item.unit} went out for this repair` }
+            }
+        }
+
+        const writtenOff = repair.quantity - quantityReturned
+        const shortfallNote = writtenOff > 0
+            ? `Written off: ${writtenOff} ${repair.item.unit} did not return from repair.`
+            : null
+
+        await prisma.$transaction(async (tx) => {
+            await tx.inventoryRepair.update({
+                where: { id: repairId },
+                data: {
+                    status: unrepairable ? 'Returned - Unrepairable' : 'Returned',
+                    actualReturnDate,
+                    quantityReturned,
+                    actualCost: actualCost !== null && !isNaN(actualCost) ? actualCost : null,
+                    receivedBy,
+                    notes: [repair.notes, notes, shortfallNote].filter(Boolean).join(' | ') || null,
+                },
+            })
+
+            if (quantityReturned > 0) {
+                const item = await tx.inventoryItem.findUnique({ where: { id: repair.itemId } })
+                if (!item) throw new Error('Item not found')
+
+                const newQuantity = item.quantity + quantityReturned
+                await tx.inventoryItem.update({
+                    where: { id: repair.itemId },
+                    data: {
+                        quantity: newQuantity,
+                        totalValue: newQuantity * item.unitCost,
+                    },
+                })
+
+                await tx.stockTransaction.create({
+                    data: {
+                        itemId: repair.itemId,
+                        type: 'IN',
+                        quantity: quantityReturned,
+                        reason: 'Returned from repair',
+                        status: 'Approved',
+                        performedBy: receivedBy,
+                        receivedBy,
+                        approvedBy: receivedBy,
+                        approvedAt: new Date(),
+                        notes: `Repair ${repair.id}${repair.vendor ? ` - ${repair.vendor}` : ''}`,
+                    },
+                })
+            }
+        })
+
+        revalidatePath('/inventory')
+        return { success: true as const }
+    } catch (error) {
+        console.error('Failed to return repaired item:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to record the return' }
+    }
+}
+
+export async function cancelRepair(repairId: string, reason: string) {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_inventory')
+
+        const trimmedReason = (reason || '').trim()
+        if (!trimmedReason) return { error: 'A reason is required to cancel a repair' }
+
+        const repair = await prisma.inventoryRepair.findUnique({ where: { id: repairId } })
+        if (!repair) return { error: 'Repair not found' }
+        if (repair.status !== 'Out for Repair') {
+            return { error: 'Only a repair that is still out can be cancelled' }
+        }
+
+        const performedBy = session.user.name || session.user.email || 'System'
+
+        await prisma.$transaction(async (tx) => {
+            await tx.inventoryRepair.update({
+                where: { id: repairId },
+                data: {
+                    status: 'Cancelled',
+                    notes: [repair.notes, `Cancelled: ${trimmedReason}`].filter(Boolean).join(' | '),
+                },
+            })
+
+            // Cancelling means the item never actually left - restore it in full.
+            const item = await tx.inventoryItem.findUnique({ where: { id: repair.itemId } })
+            if (!item) throw new Error('Item not found')
+
+            const newQuantity = item.quantity + repair.quantity
+            await tx.inventoryItem.update({
+                where: { id: repair.itemId },
+                data: {
+                    quantity: newQuantity,
+                    totalValue: newQuantity * item.unitCost,
+                },
+            })
+
+            await tx.stockTransaction.create({
+                data: {
+                    itemId: repair.itemId,
+                    type: 'IN',
+                    quantity: repair.quantity,
+                    reason: 'Repair cancelled',
+                    status: 'Approved',
+                    performedBy,
+                    approvedBy: performedBy,
+                    approvedAt: new Date(),
+                    notes: `Repair ${repair.id} cancelled: ${trimmedReason}`,
+                },
+            })
+        })
+
+        revalidatePath('/inventory')
+        return { success: true as const }
+    } catch (error) {
+        console.error('Failed to cancel repair:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to cancel repair' }
+    }
+}
+
+/**
+ * Edits the descriptive side of a repair. Quantity and item are deliberately not
+ * editable - they have already moved stock, so a correction means cancel and re-send.
+ */
+export async function updateRepair(repairId: string, formData: FormData) {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_inventory')
+
+        const repair = await prisma.inventoryRepair.findUnique({ where: { id: repairId } })
+        if (!repair) return { error: 'Repair not found' }
+
+        const expectedReturnDateStr = formData.get('expectedReturnDate') as string
+        const vendor = ((formData.get('vendor') as string) || '').trim() || null
+        const contactPhone = ((formData.get('contactPhone') as string) || '').trim() || null
+        const issueDescription = ((formData.get('issueDescription') as string) || '').trim()
+        const estimatedCostRaw = formData.get('estimatedCost') as string
+        const notes = ((formData.get('notes') as string) || '').trim() || null
+
+        if (!issueDescription) return { error: 'Fault description cannot be empty' }
+
+        const expectedReturnDate = expectedReturnDateStr
+            ? new Date(expectedReturnDateStr)
+            : repair.expectedReturnDate
+        if (expectedReturnDate < repair.sentDate) {
+            return { error: 'Expected return date cannot be before the date sent' }
+        }
+
+        const estimatedCost = estimatedCostRaw ? parseFloat(estimatedCostRaw) : null
+
+        await prisma.inventoryRepair.update({
+            where: { id: repairId },
+            data: {
+                expectedReturnDate,
+                vendor,
+                contactPhone,
+                issueDescription,
+                estimatedCost: estimatedCost !== null && !isNaN(estimatedCost) ? estimatedCost : null,
+                notes,
+            },
+        })
+
+        revalidatePath('/inventory')
+        return { success: true as const }
+    } catch (error) {
+        console.error('Failed to update repair:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to update repair' }
+    }
+}
+
+/**
+ * Fires a repair_overdue notification for each repair past its expected return date.
+ * Idempotent: a repair that already has an unread repair_overdue notification for a
+ * recipient is skipped, so running this on a schedule does not spam the same person.
+ */
+export async function checkOverdueRepairs() {
+    try {
+        const now = new Date()
+        const overdue = await prisma.inventoryRepair.findMany({
+            where: { status: 'Out for Repair', expectedReturnDate: { lt: now } },
+            include: { item: true },
+        })
+
+        if (overdue.length === 0) return { success: true, notified: 0 }
+
+        const recipients = await getUsersWithPermission('view_inventory')
+        if (recipients.length === 0) return { success: true, notified: 0 }
+
+        // Anyone already sitting on an unread alert for a given repair is skipped, so
+        // a scheduled run does not pile up duplicates for the same person.
+        const outstanding = await prisma.notification.findMany({
+            where: {
+                type: 'repair_overdue',
+                read: false,
+                entityId: { in: overdue.map(r => r.id) },
+            },
+            select: { entityId: true, userId: true },
+        })
+        const alreadyWarned = new Set(outstanding.map(n => `${n.entityId}:${n.userId}`))
+
+        let notified = 0
+        for (const repair of overdue) {
+            const days = daysBetween(repair.expectedReturnDate, now)
+            const message = `${repair.quantity} ${repair.item.unit} sent to ${repair.vendor || 'repair'} ${days === 0 ? 'was due back today' : `is ${days} day${days === 1 ? '' : 's'} overdue`}.`
+
+            for (const recipient of recipients) {
+                if (alreadyWarned.has(`${repair.id}:${recipient.id}`)) continue
+
+                await createNotification({
+                    type: 'repair_overdue',
+                    title: `Repair overdue: ${repair.item.name}`,
+                    message,
+                    priority: 'high',
+                    userId: recipient.id,
+                    entityType: 'inventory_repair',
+                    entityId: repair.id,
+                })
+                notified++
+            }
+        }
+
+        return { success: true, notified }
+    } catch (error) {
+        console.error('Failed to check overdue repairs:', error)
+        return { success: false, notified: 0 }
+    }
 }
 

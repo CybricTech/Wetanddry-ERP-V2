@@ -8,11 +8,14 @@ import {
     Plus, ChevronDown, Clock, CheckCircle2, XCircle, Warehouse, FlaskConical,
     Calendar, DollarSign, Layers, Settings, Eye, Edit, Trash2, X, Loader2,
     AlertCircle, TrendingUp, TrendingDown, BarChart3, History, FileText, Save,
-    Container, ClipboardList, Lock, MapPin
+    Container, ClipboardList, Lock, MapPin, Wrench
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import ActivityTab, { PendingApproval, StockTransaction } from './ActivityTab';
 import StorageLocationsModal from './StorageLocationsModal';
+import CategorySelect from './CategorySelect';
+import CategoryManager, { CustomCategory } from './CategoryManager';
+import RepairsTab, { Repair, RepairStats } from './RepairsTab';
 import { DatePicker } from '@/components/ui/date-picker';
 
 // Type definitions
@@ -87,6 +90,9 @@ interface InventoryClientProps {
     currentUser: string;
     permissions?: Permission[];
     customCategories?: string[];
+    customCategoryDetails?: CustomCategory[];
+    repairs?: Repair[];
+    repairStats?: RepairStats;
 }
 
 const BUILT_IN_CATEGORIES = ['Raw Material', 'Consumable', 'Equipment', 'Asset', 'Scraps', 'Lubricants'];
@@ -119,11 +125,14 @@ export default function InventoryClient({
     pendingCounts,
     currentUser,
     permissions,
-    customCategories = []
+    customCategories = [],
+    customCategoryDetails = [],
+    repairs = [],
+    repairStats = { currentlyOut: 0, overdue: 0, returnedThisMonth: 0, costThisMonth: 0 }
 }: InventoryClientProps) {
     // Combine built-in and custom categories
     const allCategories = [...BUILT_IN_CATEGORIES, ...customCategories];
-    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'containers' | 'locations' | 'activity' | 'expiring'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'silos' | 'containers' | 'locations' | 'repairs' | 'activity' | 'expiring'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [showStockModal, setShowStockModal] = useState(false);
@@ -273,6 +282,7 @@ export default function InventoryClient({
                         { id: 'silos', label: 'Silo Management', icon: <Database size={18} /> },
                         { id: 'containers', label: 'Container Storage', icon: <Container size={18} /> },
                         { id: 'locations', label: 'Storage Locations', icon: <Warehouse size={18} /> },
+                        { id: 'repairs', label: `Repairs ${repairStats.overdue > 0 ? `(${repairStats.overdue} overdue)` : ''}`, icon: <Wrench size={18} /> },
                         { id: 'activity', label: `Activity ${pendingCounts.total > 0 ? `(${pendingCounts.total})` : ''}`, icon: <History size={18} /> },
                         { id: 'expiring', label: 'Expiring Items', icon: <AlertCircle size={18} /> }
                     ].map(tab => (
@@ -296,6 +306,29 @@ export default function InventoryClient({
             {/* Tab Content */}
             {activeTab === 'overview' && (
                 <div className="space-y-6">
+                    {/* Overdue repairs need chasing, so they lead the overview rather than
+                        waiting to be found on their own tab. */}
+                    {repairStats.overdue > 0 && (
+                        <button
+                            onClick={() => setActiveTab('repairs')}
+                            className="w-full flex items-center gap-4 p-5 bg-red-50 border border-red-200 rounded-2xl text-left hover:bg-red-100/70 transition-colors active:scale-[0.995]"
+                        >
+                            <div className="p-2.5 bg-red-100 text-red-600 rounded-xl shrink-0">
+                                <Wrench size={20} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-red-900">
+                                    {repairStats.overdue} repair{repairStats.overdue === 1 ? '' : 's'} overdue
+                                </p>
+                                <p className="text-sm text-red-700 mt-0.5">
+                                    {repairStats.overdue === 1 ? 'An item is' : 'Items are'} past the expected return
+                                    date and still out with a vendor.
+                                </p>
+                            </div>
+                            <span className="text-sm font-medium text-red-700 whitespace-nowrap">View repairs →</span>
+                        </button>
+                    )}
+
                     {/* Silo Visualization */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {siloStats.map(silo => (
@@ -841,7 +874,22 @@ export default function InventoryClient({
                             })}
                         </div>
                     )}
+
+                    <CategoryManager
+                        categories={customCategoryDetails}
+                        builtIns={BUILT_IN_CATEGORIES}
+                        canManage={can('manage_inventory')}
+                    />
                 </div>
+            )}
+
+            {activeTab === 'repairs' && (
+                <RepairsTab
+                    repairs={repairs}
+                    stats={repairStats}
+                    items={items}
+                    canManage={can('manage_inventory')}
+                />
             )}
 
             {activeTab === 'activity' && (
@@ -1534,57 +1582,13 @@ function AddItemModal({ locations, currentUser, allCategories, onClose }: {
     const [isPending, startTransition] = useTransition();
     const [selectedUnit, setSelectedUnit] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
-    const [showCustomInput, setShowCustomInput] = useState(false);
-    const [customCategoryName, setCustomCategoryName] = useState('');
     const [customCategoryError, setCustomCategoryError] = useState('');
-    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-    const [localCategories, setLocalCategories] = useState(allCategories);
-
-    const handleCategoryChange = (value: string) => {
-        if (value === '__custom__') {
-            setShowCustomInput(true);
-            setSelectedCategory('');
-            setCustomCategoryError('');
-        } else {
-            setShowCustomInput(false);
-            setSelectedCategory(value);
-            setCustomCategoryName('');
-            setCustomCategoryError('');
-        }
-    };
-
-    const handleCreateCustomCategory = async () => {
-        const name = customCategoryName.trim();
-        if (!name) {
-            setCustomCategoryError('Please enter a category name');
-            return;
-        }
-        if (localCategories.includes(name)) {
-            setCustomCategoryError(`"${name}" already exists`);
-            return;
-        }
-
-        setIsCreatingCategory(true);
-        setCustomCategoryError('');
-        try {
-            const { createCustomCategory } = await import('@/lib/actions/inventory');
-            await createCustomCategory(name);
-            setLocalCategories(prev => [...prev, name]);
-            setSelectedCategory(name);
-            setShowCustomInput(false);
-            setCustomCategoryName('');
-        } catch (error: any) {
-            setCustomCategoryError(error.message || 'Failed to create category');
-        } finally {
-            setIsCreatingCategory(false);
-        }
-    };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         formData.set('createdBy', currentUser); // Set who created the item
-        // Ensure the selected category is set (hidden input handles this)
+        // CategorySelect writes the value through its own hidden input
         if (!selectedCategory) {
             setCustomCategoryError('Please select or create a category');
             return;
@@ -1624,9 +1628,6 @@ function AddItemModal({ locations, currentUser, allCategories, onClose }: {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-8 overflow-y-auto flex-1 space-y-8">
-                    {/* Hidden input for the actual category value */}
-                    <input type="hidden" name="category" value={selectedCategory} />
-
                     {/* Basic Information */}
                     <div className="space-y-4">
                         <h4 className="font-semibold text-gray-900 border-b border-gray-100 pb-2 flex items-center gap-2">
@@ -1660,58 +1661,17 @@ function AddItemModal({ locations, currentUser, allCategories, onClose }: {
 
                             <div>
                                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Category *</label>
-                                {!showCustomInput ? (
-                                    <select
-                                        value={selectedCategory}
-                                        onChange={(e) => handleCategoryChange(e.target.value)}
-                                        required={!showCustomInput}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all"
-                                    >
-                                        <option value="">Select category</option>
-                                        {localCategories.map(cat => (
-                                            <option key={cat} value={cat}>{cat}</option>
-                                        ))}
-                                        <option value="__custom__">✨ Custom (Create New)</option>
-                                    </select>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={customCategoryName}
-                                                onChange={(e) => { setCustomCategoryName(e.target.value); setCustomCategoryError(''); }}
-                                                placeholder="Enter new category name..."
-                                                autoFocus
-                                                className="flex-1 px-4 py-3 bg-gray-50 border border-purple-300 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all placeholder:text-gray-400"
-                                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCustomCategory(); } }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={handleCreateCustomCategory}
-                                                disabled={isCreatingCategory}
-                                                className="px-4 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-medium text-sm flex items-center gap-1.5 disabled:opacity-50"
-                                            >
-                                                {isCreatingCategory ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                                Add
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => { setShowCustomInput(false); setCustomCategoryName(''); setCustomCategoryError(''); }}
-                                                className="px-3 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-all"
-                                            >
-                                                <X size={14} />
-                                            </button>
-                                        </div>
-                                        {customCategoryError && (
-                                            <p className="text-xs text-red-600 flex items-center gap-1">
-                                                <AlertCircle size={12} />
-                                                {customCategoryError}
-                                            </p>
-                                        )}
-                                        <p className="text-xs text-gray-400">
-                                            This category will be saved and available for future items.
-                                        </p>
-                                    </div>
+                                <CategorySelect
+                                    categories={allCategories}
+                                    value={selectedCategory}
+                                    onChange={(cat) => { setSelectedCategory(cat); setCustomCategoryError(''); }}
+                                    accent="purple"
+                                />
+                                {customCategoryError && (
+                                    <p className="text-xs text-red-600 flex items-center gap-1 mt-2">
+                                        <AlertCircle size={12} />
+                                        {customCategoryError}
+                                    </p>
                                 )}
                             </div>
 

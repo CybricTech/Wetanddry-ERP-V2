@@ -5,6 +5,7 @@ import { Fuel, TrendingUp, DollarSign, Droplet, Plus, Package, Zap, BarChart3, A
 import { cn, formatCurrency } from '@/lib/utils'
 import AddFuelDepositModal from './AddFuelDepositModal'
 import AddEquipmentModal from './AddEquipmentModal'
+import FuelRequestsTab, { FuelRequest } from './FuelRequestsTab'
 
 interface Truck {
     id: string
@@ -46,16 +47,33 @@ interface FuelClientProps {
     equipment: EquipmentItem[]
     canLogFuel: boolean
     canManageFuel: boolean
-    logFuelAction: (formData: FormData) => Promise<{ success: true } | { error: string }>
+    canApproveFuelRequests: boolean
+    requests: FuelRequest[]
+    currentUserId: string | null
+    logFuelAction: (formData: FormData) => Promise<{ success: true; approved: boolean } | { error: string }>
 }
 
-export default function FuelClient({ logs, deposits, trucks, equipment, canLogFuel, canManageFuel, logFuelAction }: FuelClientProps) {
+export default function FuelClient({
+    logs,
+    deposits,
+    trucks,
+    equipment,
+    canLogFuel,
+    canManageFuel,
+    canApproveFuelRequests,
+    requests,
+    currentUserId,
+    logFuelAction,
+}: FuelClientProps) {
     const [showDepositModal, setShowDepositModal] = useState(false)
     const [showEquipmentModal, setShowEquipmentModal] = useState(false)
-    const [activeTab, setActiveTab] = useState<'issuance' | 'deposits' | 'reconciliation'>('issuance')
+    const [activeTab, setActiveTab] = useState<'issuance' | 'requests' | 'deposits' | 'reconciliation'>('issuance')
     const [logError, setLogError] = useState<string | null>(null)
+    const [logSuccess, setLogSuccess] = useState<string | null>(null)
     const [targetType, setTargetType] = useState<'truck' | 'equipment'>('truck')
     const [issuanceLiters, setIssuanceLiters] = useState<number>(0)
+
+    const pendingRequests = requests.filter(r => r.status === 'Pending')
 
     const totalFuel = logs.reduce((acc, log) => acc + log.liters, 0)
     const totalCost = logs.reduce((acc, log) => acc + log.cost, 0)
@@ -71,10 +89,18 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
 
     const handleLogFuel = async (formData: FormData) => {
         setLogError(null)
+        setLogSuccess(null)
         const result = await logFuelAction(formData)
         if ('error' in result) {
             setLogError(result.error)
+            return
         }
+        setLogSuccess(
+            result.approved
+                ? 'Fuel issued.'
+                : 'Request submitted. It will appear in fuel history once approved.'
+        )
+        setIssuanceLiters(0)
     }
 
     // Build reconciliation timeline (deposits + issuances sorted by date)
@@ -211,7 +237,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
 
             {/* Tab Navigation */}
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-                {(['issuance', 'deposits', 'reconciliation'] as const).map(tab => (
+                {(['issuance', 'requests', 'deposits', 'reconciliation'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -222,10 +248,22 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                 : "text-gray-500 hover:text-gray-700"
                         )}
                     >
-                        {tab === 'issuance' ? 'Fuel Issuance' : tab === 'deposits' ? 'Fuel Deposits' : 'Reconciliation'}
+                        {tab === 'issuance'
+                            ? 'Fuel Issuance'
+                            : tab === 'requests'
+                                ? 'Requests'
+                                : tab === 'deposits'
+                                    ? 'Fuel Deposits'
+                                    : 'Reconciliation'}
                         {tab === 'deposits' && (
                             <span className="ml-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-semibold">
                                 {deposits.length}
+                            </span>
+                        )}
+                        {/* Approvers see how many requests are waiting on them. */}
+                        {tab === 'requests' && canApproveFuelRequests && pendingRequests.length > 0 && (
+                            <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-semibold">
+                                {pendingRequests.length}
                             </span>
                         )}
                     </button>
@@ -241,7 +279,7 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                 <div className="bg-gray-50/50 px-6 py-4 border-b border-gray-100">
                                     <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                                         <Fuel className="text-blue-600" size={20} />
-                                        Log Fuel Issuance
+                                        {canApproveFuelRequests ? 'Issue Fuel' : 'Request Fuel'}
                                     </h2>
                                 </div>
 
@@ -251,7 +289,23 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                             <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">{logError}</div>
                                         )}
 
-                                        {currentStock <= 0 && (
+                                        {logSuccess && (
+                                            <div className="bg-emerald-50 text-emerald-700 text-sm p-3 rounded-lg">{logSuccess}</div>
+                                        )}
+
+                                        {!canApproveFuelRequests && (
+                                            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 rounded-lg flex items-start gap-2">
+                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                <span>
+                                                    Your request goes to the Super Admin for approval. Fuel is only
+                                                    issued, and consumption only recorded, once it is approved.
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* Stock only blocks an approver, who issues immediately. A request
+                                            may legitimately be raised ahead of the next delivery. */}
+                                        {currentStock <= 0 && canApproveFuelRequests && (
                                             <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm p-3 rounded-lg flex items-start gap-2">
                                                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                                                 <div>
@@ -263,7 +317,9 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
 
                                         {/* Target Type Toggle */}
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Issue To</label>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                {canApproveFuelRequests ? 'Issue To' : 'Request For'}
+                                            </label>
                                             <div className="flex gap-2">
                                                 <button
                                                     type="button"
@@ -321,10 +377,12 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                         </div>
 
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Liters Issued</label>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                                {canApproveFuelRequests ? 'Liters Issued' : 'Liters Requested'}
+                                            </label>
                                             <div className="relative">
                                                 <input name="liters" type="number" step="0.1" placeholder="0.0" required
-                                                    max={currentStock > 0 ? currentStock : undefined}
+                                                    max={canApproveFuelRequests && currentStock > 0 ? currentStock : undefined}
                                                     onChange={(e) => setIssuanceLiters(parseFloat(e.target.value) || 0)}
                                                     className="w-full pl-4 pr-12 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                                 />
@@ -365,16 +423,25 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
                                             </div>
                                         )}
 
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Purpose</label>
+                                            <input name="purpose" type="text" placeholder="e.g., Delivery run to Kaduna"
+                                                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                            />
+                                        </div>
+
                                         <button type="submit"
-                                            disabled={currentStock <= 0}
+                                            disabled={canApproveFuelRequests && currentStock <= 0}
                                             className={cn(
                                                 "w-full py-2.5 text-white rounded-lg font-medium transition-colors transform duration-100",
-                                                currentStock > 0
+                                                !canApproveFuelRequests || currentStock > 0
                                                     ? "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 active:scale-[0.98]"
                                                     : "bg-gray-300 cursor-not-allowed"
                                             )}
                                         >
-                                            {currentStock <= 0 ? 'No Stock Available' : 'Save Log Entry'}
+                                            {canApproveFuelRequests
+                                                ? currentStock <= 0 ? 'No Stock Available' : 'Issue Fuel'
+                                                : 'Submit Request'}
                                         </button>
                                     </form>
                                 </div>
@@ -467,6 +534,15 @@ export default function FuelClient({ logs, deposits, trucks, equipment, canLogFu
             )}
 
             {/* ===== DEPOSITS TAB ===== */}
+            {/* ===== REQUESTS TAB ===== */}
+            {activeTab === 'requests' && (
+                <FuelRequestsTab
+                    requests={requests}
+                    canApprove={canApproveFuelRequests}
+                    currentUserId={currentUserId}
+                />
+            )}
+
             {activeTab === 'deposits' && (
                 <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
                     <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">

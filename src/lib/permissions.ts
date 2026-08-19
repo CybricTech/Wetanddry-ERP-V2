@@ -19,6 +19,7 @@ export type Permission =
     | 'manage_fleet'
     | 'view_fleet'
     | 'manage_maintenance'
+    | 'approve_maintenance'
 
     // Documents
     | 'manage_truck_documents'
@@ -55,7 +56,8 @@ export type Permission =
     // Fuel
     | 'manage_fuel'
     | 'view_fuel_logs'
-    | 'log_fuel'
+    | 'log_fuel' // Submit a fuel request; the issuance itself needs approval
+    | 'approve_fuel_requests'
 
     // Exceptions
     | 'manage_exceptions' // Resolve/Delete
@@ -91,6 +93,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'manage_fleet',
         'view_fleet', // Added
         'manage_maintenance', // Added - was missing, caused crashes
+        'approve_maintenance',
         'manage_truck_documents',
         'view_truck_documents', // Added (just in case)
         'manage_inventory',
@@ -111,6 +114,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'manage_fuel',
         'view_fuel_logs', // Added
         'log_fuel', // Added
+        'approve_fuel_requests',
         'manage_exceptions',
         'create_exception',
         'view_exceptions',
@@ -188,6 +192,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'view_recipes',
         'view_production_runs',
         'view_fuel_logs',
+        'log_fuel', // Fuel requests are open to anyone who can reach the fuel page
         'view_exceptions',
         'view_analytics',
         'view_financials',
@@ -225,6 +230,48 @@ export const BEHAVIOUR_FLAGS: { permission: Permission; label: string; help: str
         permission: 'require_approval_confirmation',
         label: 'Require confirmation before approving',
         help: 'Adds a confirmation step before an approval is committed. This does not grant or remove the ability to approve.',
+    },
+];
+
+// Approval rights surfaced in the role editor. Separate from page access because
+// holding one of these does not open a page - it decides who can sign off on work
+// submitted from a page the role can already reach. Ships Super Admin-only, but is
+// delegable from Settings > Roles without a code change.
+export const APPROVAL_PERMISSIONS: { permission: Permission; label: string; help: string }[] = [
+    {
+        permission: 'approve_maintenance',
+        label: 'Approve maintenance',
+        help: 'Sign off on maintenance records and service schedules submitted by other users. Until approved, a record does not update the truck or raise service alerts.',
+    },
+    {
+        permission: 'approve_fuel_requests',
+        label: 'Approve fuel requests',
+        help: 'Sign off on fuel requests. Holders issue fuel directly without a request step; everyone else submits a request that waits here.',
+    },
+    {
+        permission: 'approve_inventory_items',
+        label: 'Approve new inventory items',
+        help: 'Sign off on items added to inventory before they become active stock.',
+    },
+    {
+        permission: 'approve_stock_transactions',
+        label: 'Approve stock movements',
+        help: 'Sign off on stock in, stock out, and adjustment transactions.',
+    },
+    {
+        permission: 'approve_material_requests',
+        label: 'Approve material requests',
+        help: 'Sign off on requests to move or issue materials.',
+    },
+    {
+        permission: 'approve_expenses',
+        label: 'Approve expenses',
+        help: 'Sign off on expenses recorded against clients, projects, and trucks.',
+    },
+    {
+        permission: 'approve_orders',
+        label: 'Approve orders',
+        help: 'Confirm sales orders so they can be fulfilled.',
     },
 ];
 

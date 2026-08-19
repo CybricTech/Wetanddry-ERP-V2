@@ -32,6 +32,7 @@ model Truck {
   maintenanceSchedules MaintenanceSchedule[]
   parts              Part[]
   fuelLogs           FuelLog[]
+  fuelRequests       FuelRequest[]
   exceptionLogs      ExceptionLog[]
   documents          TruckDocument[]
   expenses           Expense[]         // Transport/fuel expenses linked to this truck
@@ -62,8 +63,24 @@ model MaintenanceRecord {
   status      String   @default("Completed") // Completed, Scheduled, Overdue
   notes       String?
   performedBy String?
+
+  // Set when this record came from completing a MaintenanceSchedule. Not a relation:
+  // the schedule may be deleted while its service history stays. Approval uses it to
+  // roll the schedule forward, which a pending completion must not do.
+  scheduleId  String?
+
+  // Approval workflow - independent of `status` above, which tracks the work itself.
+  // Side effects (truck lastServiceDate/mileage) are only applied once approved.
+  approvalStatus  String    @default("Pending") // "Pending", "Approved", "Rejected"
+  requestedBy     String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([approvalStatus])
 }
 
 // Maintenance Scheduler - Automated alerts for service intervals
@@ -81,8 +98,19 @@ model MaintenanceSchedule {
   isActive        Boolean  @default(true)
   priority        String   @default("Normal") // Low, Normal, High, Critical
   notes           String?
+
+  // Approval workflow - a pending schedule is inert: it raises no due alerts and
+  // cannot be completed until approved.
+  approvalStatus  String    @default("Pending") // "Pending", "Approved", "Rejected"
+  requestedBy     String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([approvalStatus])
 }
 
 // Component Lifecycle Tracking - For high-wear components (Tires, Batteries)
@@ -168,6 +196,7 @@ model InventoryItem {
   priceHistory    MaterialPriceHistory[]
   reconciliationItems ReconciliationItem[]
   productionMaterialUsages ProductionMaterialUsage[]
+  repairs         InventoryRepair[]
 
   // Approval workflow
   status          String   @default("Active") // "Pending", "Active", "Rejected"
@@ -204,6 +233,35 @@ model StockTransaction {
   approvedAt  DateTime?
   notes       String?
   createdAt   DateTime @default(now())
+}
+
+// Inventory Repairs - items sent out to a workshop/vendor and tracked until returned.
+// Quantity sent is deducted from InventoryItem.quantity via a StockTransaction, so the
+// ledger stays consistent; returning restores it. Overdue is derived at read time from
+// expectedReturnDate, never persisted.
+model InventoryRepair {
+  id                 String   @id @default(cuid())
+  itemId             String
+  item               InventoryItem @relation(fields: [itemId], references: [id])
+  quantity           Float
+  sentDate           DateTime
+  expectedReturnDate DateTime
+  actualReturnDate   DateTime?
+  quantityReturned   Float?   // May be less than `quantity` - the shortfall is written off
+  vendor             String?
+  contactPhone       String?
+  issueDescription   String
+  estimatedCost      Float?
+  actualCost         Float?
+  status             String   @default("Out for Repair") // "Out for Repair", "Returned", "Returned - Unrepairable", "Cancelled"
+  sentBy             String?
+  receivedBy         String?
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([itemId])
+  @@index([status])
 }
 
 // Material Request Workflow - For approval process
@@ -312,6 +370,7 @@ model Equipment {
   status      String    @default("Active") // Active, Inactive, Maintenance
   notes       String?
   fuelLogs    FuelLog[]
+  fuelRequests FuelRequest[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -330,8 +389,43 @@ model FuelLog {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
+  // Set when this log was produced by approving a FuelRequest. Every log created
+  // after the approval workflow shipped has one; pre-existing logs do not.
+  fuelRequest FuelRequest?
+
   @@index([truckId])
   @@index([equipmentId])
+}
+
+// Fuel Requests - any user with `log_fuel` submits one; the FuelLog (and therefore the
+// consumption/efficiency figures) is only created when an approver approves it.
+model FuelRequest {
+  id            String     @id @default(cuid())
+  truckId       String?
+  truck         Truck?     @relation(fields: [truckId], references: [id])
+  equipmentId   String?
+  equipment     Equipment? @relation(fields: [equipmentId], references: [id])
+  liters        Float
+  estimatedCost Float?
+  mileage       Int?       // Mileage at time of request (trucks only)
+  purpose       String?
+  notes         String?
+  status        String     @default("Pending") // "Pending", "Approved", "Rejected", "Cancelled"
+
+  requestedBy     String
+  requestedById   String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+
+  fuelLogId     String?    @unique
+  fuelLog       FuelLog?   @relation(fields: [fuelLogId], references: [id])
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([status])
+  @@index([requestedById])
 }
 
 model FuelDeposit {
