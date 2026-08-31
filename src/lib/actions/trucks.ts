@@ -703,14 +703,29 @@ export async function updateMaintenanceSchedule(
         if (!session?.user?.role) return { error: 'Unauthorized' }
         checkPermission(session.user.role, 'manage_maintenance')
 
-        const nextDueDate = formData.get('nextDueDate') as string
-        const nextDueMileage = formData.get('nextDueMileage') as string
+        // Only fields actually present are sent. A blanket read would turn an absent
+        // `isActive` into false and silently deactivate the schedule, and would null
+        // every interval the form did not render.
+        const changes: Record<string, unknown> = {}
+        const text = (name: string) => (formData.get(name) as string | null)?.trim() ?? null
 
-        const changes = {
-            nextDueDate: nextDueDate ? new Date(nextDueDate).toISOString() : null,
-            nextDueMileage: nextDueMileage ? parseInt(nextDueMileage) : null,
-            isActive: formData.get('isActive') === 'true',
+        if (formData.has('type')) changes.type = text('type')
+        if (formData.has('intervalType')) changes.intervalType = text('intervalType')
+        if (formData.has('priority')) changes.priority = text('priority')
+        if (formData.has('notes')) changes.notes = text('notes') || null
+        if (formData.has('isActive')) changes.isActive = formData.get('isActive') === 'true'
+        if (formData.has('nextDueDate')) {
+            const raw = text('nextDueDate')
+            changes.nextDueDate = raw ? new Date(raw).toISOString() : null
         }
+        for (const field of ['intervalDays', 'intervalMileage', 'nextDueMileage'] as const) {
+            if (formData.has(field)) {
+                const raw = text(field)
+                changes[field] = raw ? parseInt(raw) : null
+            }
+        }
+
+        if (Object.keys(changes).length === 0) return { error: 'No changes submitted' }
 
         const existing = await prisma.maintenanceSchedule.findUnique({
             where: { id },

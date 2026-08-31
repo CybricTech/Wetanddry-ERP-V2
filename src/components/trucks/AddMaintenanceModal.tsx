@@ -1,22 +1,39 @@
 'use client'
 
-import { createMaintenanceRecord } from '@/lib/actions/trucks'
+import { createMaintenanceRecord, updateMaintenanceRecord } from '@/lib/actions/trucks'
 import { X, Wrench, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
 import { DatePicker } from '@/components/ui/date-picker'
 
-function SubmitButton({ needsApproval }: { needsApproval: boolean }) {
+function SubmitButton({ needsApproval, isEditing }: { needsApproval: boolean; isEditing: boolean }) {
     const { pending } = useFormStatus()
+    const label = needsApproval
+        ? 'Submit for Approval'
+        : isEditing
+            ? 'Save changes'
+            : 'Add Maintenance Record'
     return (
         <button
             type="submit"
             disabled={pending}
             className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-lg shadow-blue-500/25 disabled:opacity-50"
         >
-            {pending ? 'Saving...' : needsApproval ? 'Submit for Approval' : 'Add Maintenance Record'}
+            {pending ? 'Saving...' : label}
         </button>
     )
+}
+
+export interface MaintenanceRecordDraft {
+    id: string
+    type: string
+    date: Date | string
+    cost: number
+    mileageAtService: number | null
+    status: string
+    notes: string | null
+    performedBy: string | null
+    approvalStatus: string
 }
 
 interface AddMaintenanceModalProps {
@@ -24,17 +41,25 @@ interface AddMaintenanceModalProps {
     truckMileage: number
     /** False when this user's records queue for someone else to sign off. */
     canApprove?: boolean
+    /** Present to edit an existing record instead of creating one. */
+    record?: MaintenanceRecordDraft
     onClose: () => void
 }
 
-export default function AddMaintenanceModal({ truckId, truckMileage, canApprove = false, onClose }: AddMaintenanceModalProps) {
-    const [mileage, setMileage] = useState(truckMileage.toString())
+export default function AddMaintenanceModal({ truckId, truckMileage, canApprove = false, record, onClose }: AddMaintenanceModalProps) {
+    const isEditing = Boolean(record)
+    const [mileage, setMileage] = useState((record?.mileageAtService ?? truckMileage).toString())
     const [error, setError] = useState<string | null>(null)
-    const needsApproval = !canApprove
+
+    // A record still awaiting its own approval lands directly - it has taken no effect
+    // and already awaits sign-off, so editing it does not queue a second approval.
+    const needsApproval = !canApprove && !(isEditing && record!.approvalStatus === 'Pending')
 
     const handleSubmit = async (formData: FormData) => {
         setError(null)
-        const result = await createMaintenanceRecord(formData)
+        const result = record
+            ? await updateMaintenanceRecord(record.id, formData)
+            : await createMaintenanceRecord(formData)
         if ('error' in result) {
             setError(result.error)
             return
@@ -50,7 +75,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                         <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
                             <Wrench className="text-blue-600" size={20} />
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900">Add Maintenance Record</h2>
+                        <h2 className="text-xl font-bold text-gray-900">{isEditing ? 'Edit Maintenance Record' : 'Add Maintenance Record'}</h2>
                     </div>
                     <button
                         onClick={onClose}
@@ -74,8 +99,9 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 rounded-lg flex items-start gap-2">
                             <AlertCircle size={16} className="mt-0.5 shrink-0" />
                             <span>
-                                This record goes to the Super Admin for approval. It will not update the
-                                truck&apos;s service history or cost totals until it is approved.
+                                {isEditing
+                                    ? 'This change goes to the Super Admin for approval. The record keeps its current values until it is approved.'
+                                    : "This record goes to the Super Admin for approval. It will not update the truck's service history or cost totals until it is approved."}
                             </span>
                         </div>
                     )}
@@ -87,6 +113,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                         <select
                             name="type"
                             required
+                            defaultValue={record?.type ?? ''}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         >
                             <option value="">Select type</option>
@@ -109,7 +136,11 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                             <DatePicker
                                 name="date"
                                 required
-                                value={new Date().toISOString().split('T')[0]}
+                                value={
+                                    record
+                                        ? new Date(record.date).toISOString().split('T')[0]
+                                        : new Date().toISOString().split('T')[0]
+                                }
                                 className="focus:ring-blue-500"
                             />
                         </div>
@@ -122,6 +153,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                                 type="number"
                                 step="0.01"
                                 required
+                                defaultValue={record?.cost ?? ''}
                                 placeholder="0.00"
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                             />
@@ -148,6 +180,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                             </label>
                             <select
                                 name="status"
+                                defaultValue={record?.status ?? 'Completed'}
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                             >
                                 <option value="Completed">Completed</option>
@@ -163,6 +196,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                         <input
                             name="performedBy"
                             type="text"
+                            defaultValue={record?.performedBy ?? ''}
                             placeholder="Mechanic name or shop"
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         />
@@ -175,6 +209,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                         <textarea
                             name="notes"
                             rows={3}
+                            defaultValue={record?.notes ?? ''}
                             placeholder="Additional details about the maintenance..."
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
                         />
@@ -189,7 +224,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                             Cancel
                         </button>
                         <div className="flex-1">
-                            <SubmitButton needsApproval={needsApproval} />
+                            <SubmitButton needsApproval={needsApproval} isEditing={isEditing} />
                         </div>
                     </div>
                 </form>
