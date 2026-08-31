@@ -9,7 +9,7 @@ import { Loader2, Save, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { createStaff, updateStaff, uploadStaffDocument, StaffData } from '@/lib/actions/staff'
 import { DatePicker } from '@/components/ui/date-picker'
-import { STAFF_STATUSES } from '@/lib/constants/staff'
+import { DEPARTMENTS, STAFF_STATUSES } from '@/lib/constants/staff'
 
 // Schema matching the server action validation
 const StaffSchema = z.object({
@@ -200,12 +200,9 @@ export default function StaffForm({ initialData, isEditing = false, canManage = 
                             className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition-all"
                         >
                             <option value="">Select Department</option>
-                            <option value="Operations">Operations</option>
-                            <option value="Logistics">Logistics</option>
-                            <option value="Maintenance">Maintenance</option>
-                            <option value="HR">HR</option>
-                            <option value="Finance">Finance</option>
-                            <option value="Management">Management</option>
+                            {DEPARTMENTS.map((d) => (
+                                <option key={d} value={d}>{d}</option>
+                            ))}
                         </select>
                         {errors.department && <p className="text-red-500 text-xs">{errors.department.message}</p>}
                     </div>
