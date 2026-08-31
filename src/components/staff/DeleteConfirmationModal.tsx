@@ -1,19 +1,26 @@
 'use client'
 
-import { AlertTriangle, X } from 'lucide-react'
+import { ReactNode } from 'react'
+import { AlertTriangle } from 'lucide-react'
 
 interface DeleteConfirmationModalProps {
     isOpen: boolean
     onClose: () => void
     onConfirm: () => void
     isDeleting?: boolean
+    // Default to the document wording this modal was written for; callers
+    // deleting something else pass their own.
+    title?: string
+    message?: ReactNode
 }
 
 export default function DeleteConfirmationModal({
     isOpen,
     onClose,
     onConfirm,
-    isDeleting = false
+    isDeleting = false,
+    title = 'Confirm Deletion',
+    message = 'Are you sure you want to permanently delete this document? This action cannot be undone.'
 }: DeleteConfirmationModalProps) {
     if (!isOpen) return null
 
@@ -26,12 +33,12 @@ export default function DeleteConfirmationModal({
                     </div>
 
                     <h2 className="text-xl font-bold text-gray-900 mb-2">
-                        Confirm Deletion
+                        {title}
                     </h2>
 
-                    <p className="text-gray-600 mb-6">
-                        Are you sure you want to permanently delete this document? This action cannot be undone.
-                    </p>
+                    <div className="text-gray-600 mb-6">
+                        {message}
+                    </div>
 
                     <div className="flex gap-3">
                         <button

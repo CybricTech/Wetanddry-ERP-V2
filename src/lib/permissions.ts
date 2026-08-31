@@ -14,6 +14,7 @@ export type Permission =
     | 'manage_users'
     | 'manage_staff'
     | 'view_staff'
+    | 'delete_staff'
 
     // Fleet
     | 'manage_fleet'
@@ -90,6 +91,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
         'manage_users',
         'manage_staff',
         'view_staff', // Added
+        'delete_staff', // Super Admin only: permanent removal of a staff record
         'manage_fleet',
         'view_fleet', // Added
         'manage_maintenance', // Added - was missing, caused crashes
