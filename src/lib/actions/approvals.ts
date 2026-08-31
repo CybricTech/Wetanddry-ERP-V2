@@ -20,6 +20,7 @@ export type PendingApprovalKind =
     | 'maintenance_record'
     | 'maintenance_schedule'
     | 'fuel_request'
+    | 'fuel_log_edit'
 
 export interface PendingApprovalEntry {
     id: string
@@ -46,7 +47,7 @@ export async function getAllPendingApprovals(): Promise<{
 
     const can = (permission: Permission) => hasPermission(role, permission)
 
-    const [items, transactions, materialRequests, records, schedules, fuelRequests] = await Promise.all([
+    const [items, transactions, materialRequests, records, schedules, fuelRequests, fuelLogEdits] = await Promise.all([
         can('approve_inventory_items')
             ? prisma.inventoryItem.findMany({
                   where: { status: 'Pending' },
@@ -86,6 +87,12 @@ export async function getAllPendingApprovals(): Promise<{
             ? prisma.fuelRequest.findMany({
                   where: { status: 'Pending' },
                   include: { truck: true, equipment: true },
+                  orderBy: { createdAt: 'desc' },
+              })
+            : [],
+        can('approve_fuel_requests')
+            ? prisma.editRequest.findMany({
+                  where: { entityType: 'fuel_log', status: 'Pending' },
                   orderBy: { createdAt: 'desc' },
               })
             : [],
@@ -150,6 +157,16 @@ export async function getAllPendingApprovals(): Promise<{
             detail: `${request.liters} L${request.purpose ? ` - ${request.purpose}` : ''}`,
             requestedBy: request.requestedBy,
             createdAt: request.createdAt,
+            href: '/fuel',
+        })),
+        ...fuelLogEdits.map(edit => ({
+            id: edit.id,
+            kind: 'fuel_log_edit' as const,
+            module: 'Fuel' as const,
+            title: edit.operation === 'delete' ? 'Fuel log deletion' : 'Fuel log edit',
+            detail: `${(edit.previousValues as { liters?: number } | null)?.liters ?? '?'} L record - ${edit.operation === 'delete' ? 'deletion' : 'change'} awaiting approval`,
+            requestedBy: edit.requestedBy,
+            createdAt: edit.createdAt,
             href: '/fuel',
         })),
     ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
