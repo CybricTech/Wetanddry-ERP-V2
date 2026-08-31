@@ -1,4 +1,5 @@
 import type { Permission } from '@/lib/permissions';
+import type { NotificationType } from '@/lib/actions/notifications';
 
 export type FieldValues = Record<string, unknown>;
 
@@ -44,6 +45,20 @@ export interface EntityApplier {
     applyDelete(id: string): Promise<void>;
     /** Human-readable label for notification text. */
     describe(entity: FieldValues): string;
+    /**
+     * What this kind of record is called, for notification titles: "Fuel log" gives
+     * "Fuel log edit requested". Without it the generic core cannot name the thing it
+     * is notifying about, and every module's notifications read as the first one built.
+     */
+    noun: string;
+    /** Notification types fired when a request is raised and when it is decided. */
+    notifications: {
+        pending: NotificationType;
+        approved: NotificationType;
+        rejected: NotificationType;
+    };
+    /** Routes to revalidate after a request is created or decided. */
+    revalidatePaths(entity: FieldValues): string[];
     /** Recompute hook, given the entity as it stood BEFORE the change. */
     onApplied?(before: FieldValues, operation: EditOperation, changes: FieldValues): Promise<void>;
 }

@@ -78,6 +78,16 @@ export const fuelLogApplier: EntityApplier = {
         await prisma.fuelLog.delete({ where: { id } });
     },
 
+    noun: 'Fuel log',
+
+    notifications: {
+        pending: 'fuel_edit_pending',
+        approved: 'fuel_edit_approved',
+        rejected: 'fuel_edit_rejected',
+    },
+
+    revalidatePaths: () => ['/fuel'],
+
     describe(entity) {
         const target =
             (entity.truck as { plateNumber?: string } | null)?.plateNumber ??
