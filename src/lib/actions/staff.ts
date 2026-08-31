@@ -278,6 +278,48 @@ export async function reinstateStaff(id: string) {
     }
 }
 
+export async function deleteStaff(id: string) {
+    // Permanent removal, and deliberately distinct from offboarding: this is the
+    // path for records created in error or duplicated, not for someone who left.
+    // Gated on 'delete_staff', which is granted to Super Admin only and is kept
+    // out of the role editor so it cannot be delegated.
+    const session = await auth()
+    if (!session?.user?.role) return { success: false, error: 'Unauthorized' }
+    try {
+        checkPermission(session.user.role, 'delete_staff')
+    } catch (e) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
+    try {
+        const existing = await prisma.staff.findUnique({
+            where: { id },
+            select: { documents: { select: { cloudinaryPublicId: true } } },
+        })
+        if (!existing) return { success: false, error: 'Staff not found' }
+
+        // The StaffDocument rows go with it via onDelete: Cascade.
+        await prisma.staff.delete({ where: { id } })
+
+        // Cloudinary cleanup is best-effort, as in deleteStaffDocument: the record
+        // is already gone, so a failed remote delete must not surface as an error.
+        for (const doc of existing.documents) {
+            if (!doc.cloudinaryPublicId) continue
+            await deleteFromCloudinary(doc.cloudinaryPublicId).catch(() => {
+                console.warn('Failed to delete Cloudinary file:', doc.cloudinaryPublicId)
+            })
+        }
+
+        revalidatePath('/staff')
+        revalidatePath('/staff/former')
+        revalidatePath(`/staff/${id}`)
+        return { success: true }
+    } catch (error) {
+        console.error('Error deleting staff:', error)
+        return { success: false, error: 'Failed to delete staff record' }
+    }
+}
+
 export async function uploadStaffDocument(formData: FormData) {
     const session = await auth()
     if (!session?.user?.role) return { success: false, error: 'Unauthorized' }

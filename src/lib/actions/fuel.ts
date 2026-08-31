@@ -5,6 +5,10 @@ import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { checkPermission, hasPermission } from '@/lib/permissions'
 import { notifyApprovers, notifyRequester } from '@/lib/actions/notifications'
+import { getFuelStockPosition, costOf } from '@/lib/fuel-stock'
+import { createEditRequest, getPendingEditRequests } from '@/lib/actions/edit-requests'
+import { applyApprovedRequest, pickEditable, snapshotOf } from '@/lib/edit-requests/core'
+import { fuelLogApplier } from '@/lib/edit-requests/fuel-log'
 
 
 export async function getFuelLogs() {
@@ -19,31 +23,6 @@ export async function getFuelLogs() {
     })
 }
 
-/**
- * Current fuel stock and the blended cost per litre across all deposits. Shared by the
- * request path (for an estimate) and the approval path (for the cost actually booked),
- * so the two can never drift apart.
- */
-async function getFuelStockPosition() {
-    const [depositAgg, depositCostAgg, issuanceAgg] = await Promise.all([
-        prisma.fuelDeposit.aggregate({ _sum: { liters: true } }),
-        prisma.fuelDeposit.aggregate({ _sum: { totalCost: true } }),
-        prisma.fuelLog.aggregate({ _sum: { liters: true } }),
-    ])
-
-    const totalDeposited = depositAgg._sum.liters ?? 0
-    const totalDepositCost = depositCostAgg._sum.totalCost ?? 0
-    const totalIssued = issuanceAgg._sum.liters ?? 0
-
-    return {
-        currentStock: totalDeposited - totalIssued,
-        blendedCostPerLiter: totalDeposited > 0 ? totalDepositCost / totalDeposited : 0,
-    }
-}
-
-function costOf(liters: number, blendedCostPerLiter: number) {
-    return Math.round(liters * blendedCostPerLiter * 100) / 100
-}
 
 /**
  * Writes the FuelLog for an approved issuance and moves the truck's odometer. This is
@@ -508,4 +487,120 @@ export async function createFuelDeposit(formData: FormData): Promise<{ success: 
         console.error('Failed to create fuel deposit:', error)
         return { error: error instanceof Error ? error.message : 'Failed to record fuel deposit' }
     }
+}
+
+// ==================== FUEL LOG EDIT & DELETE APPROVALS ====================
+// Spec: docs/superpowers/specs/2026-08-31-fuel-log-edit-approvals-design.md
+
+/**
+ * Proposes an edit to a fuel log. Mirrors createFuelRequest: an approver skips the
+ * queue and the change lands immediately; everyone else with page access submits a
+ * request that waits. The check is on the permission, never the role name.
+ */
+export async function requestFuelLogEdit(
+    id: string,
+    formData: FormData
+): Promise<{ success: true; applied: boolean } | { error: string }> {
+    const session = await auth()
+    const role = session?.user?.role
+    if (!role) return { error: 'Unauthorized' }
+    if (!hasPermission(role, 'view_fuel_logs')) return { error: 'Unauthorized' }
+
+    const raw: Record<string, unknown> = {}
+    for (const field of fuelLogApplier.editableFields) {
+        const value = formData.get(field)
+        if (value !== null && value !== '') raw[field] = value
+    }
+
+    if (!hasPermission(role, 'approve_fuel_requests')) {
+        const result = await createEditRequest('fuel_log', id, 'update', raw)
+        if ('error' in result) return result
+        revalidatePath('/fuel')
+        return { success: true, applied: false }
+    }
+
+    // Approver path: create the request already decided, so the audit trail is
+    // identical whether a change was queued or applied directly.
+    const current = await fuelLogApplier.load(id)
+    if (!current) return { error: 'Fuel log not found' }
+
+    const changes = pickEditable(raw, fuelLogApplier.editableFields)
+    if (Object.keys(changes).length === 0) return { error: 'No editable fields were changed' }
+
+    const request = await prisma.editRequest.create({
+        data: {
+            entityType: 'fuel_log',
+            entityId: id,
+            operation: 'update',
+            proposedChanges: changes as object,
+            previousValues: snapshotOf(current, fuelLogApplier.editableFields) as object,
+            requestedBy: session.user.name || session.user.email || role,
+            requestedById: session.user.id ?? undefined,
+        },
+    })
+
+    const applied = await applyApprovedRequest(request.id, { acceptStale: true })
+    if ('error' in applied) {
+        await prisma.editRequest.delete({ where: { id: request.id } })
+        return applied
+    }
+    await prisma.editRequest.update({
+        where: { id: request.id },
+        data: { approvedBy: session.user.name || session.user.email || role },
+    })
+
+    revalidatePath('/fuel')
+    return { success: true, applied: true }
+}
+
+/** Proposes deletion of a fuel log. Same approver split as requestFuelLogEdit. */
+export async function requestFuelLogDelete(
+    id: string,
+    reason: string
+): Promise<{ success: true; applied: boolean } | { error: string }> {
+    const session = await auth()
+    const role = session?.user?.role
+    if (!role) return { error: 'Unauthorized' }
+    if (!hasPermission(role, 'view_fuel_logs')) return { error: 'Unauthorized' }
+    if (!reason?.trim()) return { error: 'A reason is required to delete a fuel log' }
+
+    if (!hasPermission(role, 'approve_fuel_requests')) {
+        const result = await createEditRequest('fuel_log', id, 'delete', {}, reason)
+        if ('error' in result) return result
+        revalidatePath('/fuel')
+        return { success: true, applied: false }
+    }
+
+    const current = await fuelLogApplier.load(id)
+    if (!current) return { error: 'Fuel log not found' }
+
+    const request = await prisma.editRequest.create({
+        data: {
+            entityType: 'fuel_log',
+            entityId: id,
+            operation: 'delete',
+            previousValues: snapshotOf(current, fuelLogApplier.editableFields) as object,
+            rejectionReason: reason.trim(),
+            requestedBy: session.user.name || session.user.email || role,
+            requestedById: session.user.id ?? undefined,
+        },
+    })
+
+    const applied = await applyApprovedRequest(request.id, { acceptStale: true })
+    if ('error' in applied) {
+        await prisma.editRequest.delete({ where: { id: request.id } })
+        return applied
+    }
+    await prisma.editRequest.update({
+        where: { id: request.id },
+        data: { approvedBy: session.user.name || session.user.email || role },
+    })
+
+    revalidatePath('/fuel')
+    return { success: true, applied: true }
+}
+
+/** Pending fuel log edit requests, scoped by getPendingEditRequests' own visibility rules. */
+export async function getFuelLogEditRequests() {
+    return getPendingEditRequests('fuel_log')
 }

@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Fuel, TrendingUp, DollarSign, Droplet, Plus, Package, Zap, BarChart3, AlertTriangle } from 'lucide-react'
+import { Fuel, TrendingUp, DollarSign, Droplet, Plus, Package, Zap, BarChart3, AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import AddFuelDepositModal from './AddFuelDepositModal'
 import AddEquipmentModal from './AddEquipmentModal'
 import FuelRequestsTab, { FuelRequest } from './FuelRequestsTab'
+import EditFuelLogModal from './EditFuelLogModal'
+import type { EditRequestView } from '@/lib/edit-requests/types'
 
 interface Truck {
     id: string
@@ -48,6 +50,9 @@ interface FuelClientProps {
     canLogFuel: boolean
     canManageFuel: boolean
     canApproveFuelRequests: boolean
+    canRequestFuelLogEdit: boolean
+    pendingEditLogIds: string[]
+    editRequests: EditRequestView[]
     requests: FuelRequest[]
     currentUserId: string | null
     logFuelAction: (formData: FormData) => Promise<{ success: true; approved: boolean } | { error: string }>
@@ -61,6 +66,9 @@ export default function FuelClient({
     canLogFuel,
     canManageFuel,
     canApproveFuelRequests,
+    canRequestFuelLogEdit,
+    pendingEditLogIds,
+    editRequests,
     requests,
     currentUserId,
     logFuelAction,
@@ -72,6 +80,8 @@ export default function FuelClient({
     const [logSuccess, setLogSuccess] = useState<string | null>(null)
     const [targetType, setTargetType] = useState<'truck' | 'equipment'>('truck')
     const [issuanceLiters, setIssuanceLiters] = useState<number>(0)
+    const [editing, setEditing] = useState<{ log: FuelLog; mode: 'edit' | 'delete' } | null>(null)
+    const pendingEdits = new Set(pendingEditLogIds)
 
     const pendingRequests = requests.filter(r => r.status === 'Pending')
 
@@ -464,12 +474,13 @@ export default function FuelClient({
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Liters</th>
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost</th>
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Efficiency</th>
+                                            <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {logs.length === 0 ? (
                                             <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center">
+                                                <td colSpan={6} className="px-6 py-12 text-center">
                                                     <div className="flex flex-col items-center justify-center text-gray-400">
                                                         <div className="p-3 bg-gray-50 rounded-full mb-3"><Droplet size={24} className="text-gray-300" /></div>
                                                         <p className="text-base font-medium text-gray-900">No fuel records found</p>
@@ -522,6 +533,22 @@ export default function FuelClient({
                                                             <span className="text-gray-300 text-sm group-hover:text-gray-400 transition-colors">—</span>
                                                         )}
                                                     </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                        {!canRequestFuelLogEdit ? null : pendingEdits.has(log.id) ? (
+                                                            <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                                                                Edit pending approval
+                                                            </span>
+                                                        ) : (
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button onClick={() => setEditing({ log, mode: "edit" })} title="Edit this log" className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                                                                    <Pencil size={16} />
+                                                                </button>
+                                                                <button onClick={() => setEditing({ log, mode: "delete" })} title="Delete this log" className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))
                                         )}
@@ -540,6 +567,7 @@ export default function FuelClient({
                     requests={requests}
                     canApprove={canApproveFuelRequests}
                     currentUserId={currentUserId}
+                    editRequests={editRequests}
                 />
             )}
 
@@ -693,6 +721,14 @@ export default function FuelClient({
             {/* Modals */}
             {showDepositModal && <AddFuelDepositModal onClose={() => setShowDepositModal(false)} />}
             {showEquipmentModal && <AddEquipmentModal onClose={() => setShowEquipmentModal(false)} />}
+            {editing && (
+                <EditFuelLogModal
+                    log={editing.log}
+                    mode={editing.mode}
+                    canApprove={canApproveFuelRequests}
+                    onClose={() => setEditing(null)}
+                />
+            )}
         </div>
     )
 }

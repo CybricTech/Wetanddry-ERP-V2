@@ -2,6 +2,7 @@ import { getStaffById } from '@/lib/actions/staff'
 import StaffForm from '@/components/staff/StaffForm'
 import StaffDocuments from '@/components/staff/StaffDocuments'
 import OffboardStaffPanel from '@/components/staff/OffboardStaffPanel'
+import DeleteStaffPanel from '@/components/staff/DeleteStaffPanel'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { notFound } from 'next/navigation'
@@ -24,6 +25,8 @@ export default async function StaffDetailsPage({
     }
 
     const canManageStaff = session?.user?.role ? hasPermission(session.user.role, 'manage_staff') : false
+    // Super Admin only. The action re-checks; this just decides what is rendered.
+    const canDeleteStaff = session?.user?.role ? hasPermission(session.user.role, 'delete_staff') : false
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
@@ -60,6 +63,14 @@ export default async function StaffDetailsPage({
                     exitReason={staff.exitReason}
                     exitRecordedBy={staff.exitRecordedBy}
                     exitRecordedAt={staff.exitRecordedAt}
+                />
+            )}
+
+            {canDeleteStaff && (
+                <DeleteStaffPanel
+                    staffId={staff.id}
+                    staffName={`${staff.firstName} ${staff.lastName}`}
+                    isFormerStaff={Boolean(staff.exitType)}
                 />
             )}
         </div>
