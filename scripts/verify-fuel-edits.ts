@@ -3,12 +3,13 @@
  * Spec: docs/superpowers/specs/2026-08-31-fuel-log-edit-approvals-design.md
  * Plan: docs/superpowers/plans/2026-08-31-fuel-log-edit-approvals.md
  *
- *   npx ts-node --compiler-options '{"module":"CommonJS"}' -r dotenv/config scripts/verify-fuel-edits.ts
+ *   TS_NODE_BASEURL=. npx ts-node --compiler-options '{"module":"CommonJS"}' -r dotenv/config -r tsconfig-paths/register scripts/verify-fuel-edits.ts
  *
  * Creates its own throwaway truck and fuel logs, prefixed __verify_, and removes them
  * on every exit path. Never asserts against pre-existing production rows.
  */
 import { PrismaClient } from '../src/generated/prisma';
+import { recomputeFuelLogEfficiency, findSuccessorLogId } from '../src/lib/fuel-metrics';
 
 const prisma = new PrismaClient();
 const TAG = '__verify_fuel_edits';
@@ -57,6 +58,46 @@ async function main() {
     check('defaults to update', row.operation, 'update');
     check('proposedChanges nullable', row.proposedChanges, null);
     await prisma.editRequest.delete({ where: { id: row.id } });
+
+    console.log('\nTask 2 - efficiency recompute');
+    const truck = await prisma.truck.create({
+        data: { plateNumber: `${TAG}_A`, model: 'Verify', purchaseDate: new Date('2026-01-01'), mileage: 0 },
+    });
+    const d = (day: number) => new Date(`2026-03-${String(day).padStart(2, '0')}T00:00:00.000Z`);
+    // Three fills: 1000 -> 1500 -> 2000 km, 100 L each.
+    const l1 = await prisma.fuelLog.create({ data: { truckId: truck.id, date: d(1), liters: 100, cost: 1, mileage: 1000, efficiency: null } });
+    const l2 = await prisma.fuelLog.create({ data: { truckId: truck.id, date: d(2), liters: 100, cost: 1, mileage: 1500, efficiency: null } });
+    const l3 = await prisma.fuelLog.create({ data: { truckId: truck.id, date: d(3), liters: 100, cost: 1, mileage: 2000, efficiency: null } });
+
+    await recomputeFuelLogEfficiency(l2.id);
+    check('l2 = (1500-1000)/100', (await prisma.fuelLog.findUnique({ where: { id: l2.id } }))!.efficiency, 5);
+
+    await recomputeFuelLogEfficiency(l1.id);
+    check('first fill has no baseline', (await prisma.fuelLog.findUnique({ where: { id: l1.id } }))!.efficiency, null);
+
+    check('successor of l2 is l3', await findSuccessorLogId(truck.id, d(2), l2.id), l3.id);
+    check('l3 has no successor', await findSuccessorLogId(truck.id, d(3), l3.id), null);
+
+    // A maintenance reading between two fills becomes the baseline.
+    await prisma.maintenanceRecord.create({
+        data: { truckId: truck.id, date: d(2), type: 'Service', cost: 0, mileageAtService: 1700, approvalStatus: 'Approved' },
+    });
+    await recomputeFuelLogEfficiency(l3.id);
+    check('l3 baselines off maintenance 1700', (await prisma.fuelLog.findUnique({ where: { id: l3.id } }))!.efficiency, 3);
+
+    // A Pending maintenance reading must be ignored.
+    await prisma.maintenanceRecord.create({
+        data: { truckId: truck.id, date: d(2), type: 'Service', cost: 0, mileageAtService: 1900, approvalStatus: 'Pending' },
+    });
+    await recomputeFuelLogEfficiency(l3.id);
+    check('pending maintenance ignored', (await prisma.fuelLog.findUnique({ where: { id: l3.id } }))!.efficiency, 3);
+
+    // Non-forward odometer yields null, not a negative figure.
+    await prisma.fuelLog.update({ where: { id: l3.id }, data: { mileage: 1600 } });
+    await recomputeFuelLogEfficiency(l3.id);
+    check('backwards odometer -> null', (await prisma.fuelLog.findUnique({ where: { id: l3.id } }))!.efficiency, null);
+
+    check('BOUNDARY: Truck.mileage untouched by recompute', (await prisma.truck.findUnique({ where: { id: truck.id } }))!.mileage, 0);
 
     await cleanup();
     console.log(failures === 0 ? '\nPASS - all assertions held' : `\nFAIL - ${failures} assertion(s) failed`);

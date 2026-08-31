@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma'
 import { auth } from '@/auth'
 import { checkPermission, hasPermission } from '@/lib/permissions'
 import { notifyApprovers, notifyRequester } from '@/lib/actions/notifications'
+import { getFuelStockPosition, costOf } from '@/lib/fuel-stock'
 
 
 export async function getFuelLogs() {
@@ -19,31 +20,6 @@ export async function getFuelLogs() {
     })
 }
 
-/**
- * Current fuel stock and the blended cost per litre across all deposits. Shared by the
- * request path (for an estimate) and the approval path (for the cost actually booked),
- * so the two can never drift apart.
- */
-async function getFuelStockPosition() {
-    const [depositAgg, depositCostAgg, issuanceAgg] = await Promise.all([
-        prisma.fuelDeposit.aggregate({ _sum: { liters: true } }),
-        prisma.fuelDeposit.aggregate({ _sum: { totalCost: true } }),
-        prisma.fuelLog.aggregate({ _sum: { liters: true } }),
-    ])
-
-    const totalDeposited = depositAgg._sum.liters ?? 0
-    const totalDepositCost = depositCostAgg._sum.totalCost ?? 0
-    const totalIssued = issuanceAgg._sum.liters ?? 0
-
-    return {
-        currentStock: totalDeposited - totalIssued,
-        blendedCostPerLiter: totalDeposited > 0 ? totalDepositCost / totalDeposited : 0,
-    }
-}
-
-function costOf(liters: number, blendedCostPerLiter: number) {
-    return Math.round(liters * blendedCostPerLiter * 100) / 100
-}
 
 /**
  * Writes the FuelLog for an approved issuance and moves the truck's odometer. This is
