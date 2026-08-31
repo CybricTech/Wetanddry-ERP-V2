@@ -20,8 +20,11 @@ import {
     approveMaintenanceRecord,
     rejectMaintenanceRecord,
     approveMaintenanceSchedule,
-    rejectMaintenanceSchedule
+    rejectMaintenanceSchedule,
+    deleteMaintenanceRecord,
+    deleteMaintenanceSchedule
 } from '@/lib/actions/trucks'
+import EditRequestCell, { type PendingEditRequest } from './EditRequestCell'
 import { FileText, Trash2, Eye } from 'lucide-react'
 import { usePermissions } from '@/hooks/use-permissions'
 import { hasPermissionIn, Permission } from '@/lib/permissions'
@@ -34,6 +37,8 @@ interface TruckData {
     status: string
     purchaseDate: Date
     mileage: number
+    manualMileage: number | null
+    manualMileageAt: Date | null
     lastServiceDate: Date | null
     nextServiceDate: Date | null
     nextServiceMileage: number | null
@@ -61,6 +66,7 @@ interface TruckData {
         nextDueMileage: number | null
         priority: string
         isActive: boolean
+        notes: string | null
         approvalStatus: string
         requestedBy: string | null
         approvedBy: string | null
@@ -96,6 +102,19 @@ interface TruckData {
         notes: string | null
         createdAt: Date
     }[]
+    editRequests?: TruckEditRequest[]
+}
+
+interface TruckEditRequest {
+    id: string
+    entityType: string
+    entityId: string
+    operation: string
+    requestedBy: string
+    // Prisma types a Json column as JsonValue, which is wider than the object shape
+    // this feature always writes. Narrowed at the one place it is consumed below.
+    proposedChanges: unknown
+    previousValues: unknown
 }
 
 interface TruckDetailsClientProps {
@@ -113,7 +132,16 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
     const [showDeleteModal, setShowDeleteModal] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
     const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'components' | 'schedules' | 'documents'>('overview')
+    const [editingRecord, setEditingRecord] = useState<TruckData['maintenanceRecords'][number] | null>(null)
+    const [editingSchedule, setEditingSchedule] = useState<TruckData['maintenanceSchedules'][number] | null>(null)
+    // ApprovalCell owns its own transition; row actions need a separate one.
+    const [isRowActionPending, startRowAction] = useTransition()
     const { can: clientCan } = usePermissions()
+
+    // A row with a request awaiting sign-off shows the request instead of its actions.
+    const pendingEditFor = new Map<string, PendingEditRequest>(
+        (truck.editRequests ?? []).map((r) => [r.entityId, r as unknown as PendingEditRequest]),
+    )
 
     // Prefer the server-resolved list so the first paint is correct; fall back to
     // the session-backed hook when this renders without it.
@@ -358,7 +386,16 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                             </div>
                             <div className="flex justify-between py-2 border-b border-gray-100">
                                 <span className="text-gray-600">Current Mileage</span>
-                                <span className="font-medium text-gray-900">{truck.mileage.toLocaleString()} km</span>
+                                <span className="text-right">
+                                    <span className="font-medium text-gray-900">{truck.mileage.toLocaleString()} km</span>
+                                    {/* Provenance: the odometer is derived from maintenance records, fuel
+                                        logs, and this manual entry, so say when the manual one is winning. */}
+                                    {truck.manualMileageAt && truck.manualMileage === truck.mileage && (
+                                        <span className="block text-xs text-gray-400">
+                                            manual entry, {new Date(truck.manualMileageAt).toLocaleDateString()}
+                                        </span>
+                                    )}
+                                </span>
                             </div>
                             <div className="flex justify-between py-2">
                                 <span className="text-gray-600">Last Service</span>
@@ -438,12 +475,13 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Approval</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Notes</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
                                 {truck.maintenanceRecords.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center">
+                                        <td colSpan={8} className="px-6 py-12 text-center">
                                             <Wrench className="mx-auto text-gray-300 mb-3" size={40} />
                                             <p className="text-gray-500">No maintenance records yet</p>
                                             <button
@@ -491,6 +529,43 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
                                                 {record.notes || '-'}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {pendingEditFor.has(record.id) ? (
+                                                    <EditRequestCell
+                                                        request={pendingEditFor.get(record.id)!}
+                                                        canApprove={can('approve_maintenance')}
+                                                    />
+                                                ) : can('manage_maintenance') && record.approvalStatus !== 'Rejected' ? (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingRecord(record)}
+                                                            disabled={isRowActionPending}
+                                                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                                                            title="Edit record"
+                                                        >
+                                                            <Edit size={15} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={isRowActionPending}
+                                                            onClick={() => {
+                                                                const reason = can('approve_maintenance')
+                                                                    ? undefined
+                                                                    : window.prompt('Why should this record be deleted?')?.trim()
+                                                                if (!can('approve_maintenance') && !reason) return
+                                                                startRowAction(async () => {
+                                                                    await deleteMaintenanceRecord(record.id, reason)
+                                                                })
+                                                            }}
+                                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                                            title="Delete record"
+                                                        >
+                                                            <Trash2 size={15} />
+                                                        </button>
+                                                    </div>
+                                                ) : null}
                                             </td>
                                         </tr>
                                     ))
@@ -662,6 +737,41 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                                                     onReject={(reason) => rejectMaintenanceSchedule(schedule.id, reason)}
                                                 />
                                             )}
+                                            {pendingEditFor.has(schedule.id) ? (
+                                                <EditRequestCell
+                                                    request={pendingEditFor.get(schedule.id)!}
+                                                    canApprove={can('approve_maintenance')}
+                                                />
+                                            ) : can('manage_maintenance') && schedule.approvalStatus !== 'Rejected' ? (
+                                                <div className="flex items-center gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingSchedule(schedule)}
+                                                        disabled={isRowActionPending}
+                                                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                                                        title="Edit schedule"
+                                                    >
+                                                        <Edit size={15} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isRowActionPending}
+                                                        onClick={() => {
+                                                            const reason = can('approve_maintenance')
+                                                                ? undefined
+                                                                : window.prompt('Why should this schedule be deleted?')?.trim()
+                                                            if (!can('approve_maintenance') && !reason) return
+                                                            startRowAction(async () => {
+                                                                await deleteMaintenanceSchedule(schedule.id, reason)
+                                                            })
+                                                        }}
+                                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                                        title="Delete schedule"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
+                                            ) : null}
                                             <div className="text-right">
                                                 <div className={cn(
                                                     "text-sm font-medium",
@@ -800,6 +910,24 @@ export default function TruckDetailsClient({ truck, permissions }: TruckDetailsC
                     truckMileage={truck.mileage}
                     canApprove={can('approve_maintenance')}
                     onClose={() => setShowScheduleModal(false)}
+                />
+            )}
+            {editingRecord && (
+                <AddMaintenanceModal
+                    truckId={truck.id}
+                    truckMileage={truck.mileage}
+                    canApprove={can('approve_maintenance')}
+                    record={editingRecord}
+                    onClose={() => setEditingRecord(null)}
+                />
+            )}
+            {editingSchedule && (
+                <ScheduleMaintenanceModal
+                    truckId={truck.id}
+                    truckMileage={truck.mileage}
+                    canApprove={can('approve_maintenance')}
+                    schedule={editingSchedule}
+                    onClose={() => setEditingSchedule(null)}
                 />
             )}
             {showPartModal && (
