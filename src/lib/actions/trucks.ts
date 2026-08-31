@@ -89,7 +89,39 @@ export async function getTruck(id: string) {
         },
     })
 
-    return truck
+    if (!truck) return null
+
+    // EditRequest is polymorphic and has no FK to Truck, so pending requests are
+    // fetched by the ids on this page and attached for the client to badge rows with.
+    //
+    // Visibility: approvers see every request; everyone else sees only their own, so a
+    // requester can tell a submitted change from a landed one without exposing other
+    // people's pending edits to everyone who can open the Fleet page.
+    const session = await auth()
+    const canApprove = session?.user?.role
+        ? hasPermission(session.user.role, 'approve_maintenance')
+        : false
+    const viewer = session?.user?.name || session?.user?.email || null
+
+    const editRequests = await prisma.editRequest.findMany({
+        where: {
+            status: 'Pending',
+            ...(canApprove ? {} : { requestedBy: viewer ?? '__none__' }),
+            OR: [
+                {
+                    entityType: 'maintenance_record',
+                    entityId: { in: truck.maintenanceRecords.map((r) => r.id) },
+                },
+                {
+                    entityType: 'maintenance_schedule',
+                    entityId: { in: truck.maintenanceSchedules.map((s) => s.id) },
+                },
+            ],
+        },
+        orderBy: { createdAt: 'desc' },
+    })
+
+    return { ...truck, editRequests }
 }
 
 export async function updateTruck(id: string, formData: FormData) {
