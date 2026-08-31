@@ -22,6 +22,11 @@ model Truck {
   status          String    @default("Available") // Available, In Use, Maintenance
   purchaseDate    DateTime
   mileage         Int       @default(0)
+  // The odometer typed into the Add/Edit Truck form. Maintenance records and fuel logs
+  // keep their own history in their own tables; this manual entry had none, so a
+  // recompute would silently discard it. Surfaced as provenance on the truck page.
+  manualMileage   Int?
+  manualMileageAt DateTime?
   lastServiceDate DateTime?
   nextServiceDate DateTime?
   nextServiceMileage Int?
@@ -1009,4 +1014,33 @@ model CustomInventoryCategory {
   name      String   @unique
   createdBy String?
   createdAt DateTime @default(now())
+}
+
+// A proposed change to a record that already exists and is live. Distinct from the
+// creation-approval flow on MaintenanceRecord/MaintenanceSchedule, where the row itself
+// carries approvalStatus and stays inert until signed off. Here the target record keeps
+// serving its current values while the proposal waits.
+//
+// Polymorphic by design: entityType/entityId is a string reference, not an FK, matching
+// User.role and MaintenanceRecord.scheduleId. A request therefore outlives an approved
+// delete, which is intentional - the audit trail survives. Every read path must tolerate
+// a missing target.
+model EditRequest {
+  id              String    @id @default(cuid())
+  entityType      String    // "maintenance_record", "maintenance_schedule"
+  entityId        String
+  operation       String    @default("update") // "update", "delete"
+  proposedChanges Json?     // null for a delete
+  previousValues  Json?     // whitelisted fields as they were at request time
+  status          String    @default("Pending") // "Pending", "Approved", "Rejected"
+  requestedBy     String
+  requestedById   String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([entityType, entityId])
+  @@index([status])
 }
