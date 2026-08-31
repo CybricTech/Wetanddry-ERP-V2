@@ -10,6 +10,9 @@
  */
 import { PrismaClient } from '../src/generated/prisma';
 import { recomputeFuelLogEfficiency, findSuccessorLogId } from '../src/lib/fuel-metrics';
+import { pickEditable, snapshotOf, detectStale, findOpenRequest } from '../src/lib/edit-requests/core';
+import { getApplier } from '../src/lib/edit-requests/registry';
+import { getFuelStockPosition } from '../src/lib/fuel-stock';
 
 const prisma = new PrismaClient();
 const TAG = '__verify_fuel_edits';
@@ -98,6 +101,53 @@ async function main() {
     check('backwards odometer -> null', (await prisma.fuelLog.findUnique({ where: { id: l3.id } }))!.efficiency, null);
 
     check('BOUNDARY: Truck.mileage untouched by recompute', (await prisma.truck.findUnique({ where: { id: truck.id } }))!.mileage, 0);
+
+    console.log('\nTask 3 - whitelist, snapshot, staleness');
+    const applier = getApplier('fuel_log')!;
+    check('fuel_log applier registered', applier !== null && applier !== undefined, true);
+    check('request gate', applier.requestPermission, 'view_fuel_logs');
+    check('approve gate', applier.approvePermission, 'approve_fuel_requests');
+
+    const stripped = pickEditable(
+        {
+            liters: 50, cost: 10, mileage: 2100, date: '2026-03-04T00:00:00.000Z',
+            truckId: 'hijack', equipmentId: 'hijack', efficiency: 999, id: 'hijack',
+            createdAt: 'hijack', updatedAt: 'hijack',
+        },
+        applier.editableFields
+    );
+    check('keeps only whitelisted keys', Object.keys(stripped).sort(), ['cost', 'date', 'liters', 'mileage']);
+    check('truckId stripped', 'truckId' in stripped, false);
+    check('efficiency stripped', 'efficiency' in stripped, false);
+    check('id stripped', 'id' in stripped, false);
+
+    const loaded = (await applier.load(l2.id))!;
+    check(
+        'load returns whitelisted fields',
+        Object.keys(snapshotOf(loaded, applier.editableFields)).sort(),
+        ['cost', 'date', 'liters', 'mileage']
+    );
+
+    const prev = snapshotOf(loaded, applier.editableFields);
+    check('identical snapshot is not stale', detectStale(prev, prev, applier.editableFields), []);
+    check('changed liters is stale', detectStale(prev, { ...prev, liters: 999 }, applier.editableFields), ['liters']);
+
+    check('no open request yet', await findOpenRequest('fuel_log', l2.id), null);
+    const open = await prisma.editRequest.create({
+        data: { entityType: 'fuel_log', entityId: l2.id, requestedBy: TAG, proposedChanges: { liters: 90 } },
+    });
+    check('open request found', (await findOpenRequest('fuel_log', l2.id))?.id, open.id);
+    await prisma.editRequest.update({ where: { id: open.id }, data: { status: 'Rejected' } });
+    check('rejected is not open', await findOpenRequest('fuel_log', l2.id), null);
+    await prisma.editRequest.delete({ where: { id: open.id } });
+
+    console.log('\nTask 3 - stock guard');
+    const { currentStock } = await getFuelStockPosition();
+    const raise = await applier.validate!({ liters: (loaded.liters as number) + currentStock + 10 }, loaded);
+    check('raising liters past stock is refused', typeof raise === 'string', true);
+    check('lowering liters is allowed', await applier.validate!({ liters: 1 }, loaded), null);
+    check('zero liters refused', typeof (await applier.validate!({ liters: 0 }, loaded)) === 'string', true);
+    check('cost-only edit allowed', await applier.validate!({ cost: 42 }, loaded), null);
 
     await cleanup();
     console.log(failures === 0 ? '\nPASS - all assertions held' : `\nFAIL - ${failures} assertion(s) failed`);
