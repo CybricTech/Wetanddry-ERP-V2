@@ -136,6 +136,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     ],
     [Role.MANAGER]: [
         'view_staff',
+        'manage_staff',
         'view_fleet',
         'manage_maintenance',
         'manage_truck_documents', // Added - was missing, caused crashes

@@ -40,9 +40,11 @@ type StaffFormValues = z.infer<typeof StaffSchema>
 interface StaffFormProps {
     initialData?: StaffData & { id: string }
     isEditing?: boolean
+    /** False renders the record read-only. The server actions enforce this too. */
+    canManage?: boolean
 }
 
-export default function StaffForm({ initialData, isEditing = false }: StaffFormProps) {
+export default function StaffForm({ initialData, isEditing = false, canManage = true }: StaffFormProps) {
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -126,6 +128,10 @@ export default function StaffForm({ initialData, isEditing = false }: StaffFormP
                     {error}
                 </div>
             )}
+
+            {/* A disabled fieldset makes every descendant control read-only in one
+                place, so a view-only user cannot type changes they can never save. */}
+            <fieldset disabled={!canManage} className="space-y-6 m-0 p-0 border-0 disabled:opacity-90">
 
             <div className="bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
                 <h2 className="text-xl font-semibold text-gray-900 mb-6">Personal Information</h2>
@@ -350,6 +356,9 @@ export default function StaffForm({ initialData, isEditing = false }: StaffFormP
                 </div>
             )}
 
+            </fieldset>
+
+            {canManage && (
             <div className="flex items-center justify-end gap-4">
                 <Link
                     href="/staff"
@@ -375,6 +384,7 @@ export default function StaffForm({ initialData, isEditing = false }: StaffFormP
                     )}
                 </button>
             </div>
+            )}
         </form>
     )
 }

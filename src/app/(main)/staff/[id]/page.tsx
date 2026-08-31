@@ -47,7 +47,7 @@ export default async function StaffDetailsPage({
                 </div>
             </div>
 
-            <StaffForm initialData={{ ...staff, email: staff.email ?? undefined }} isEditing />
+            <StaffForm initialData={{ ...staff, email: staff.email ?? undefined }} isEditing canManage={canManageStaff} />
 
             <StaffDocuments staffId={staff.id} documents={staff.documents} canManageStaff={canManageStaff} />
 
