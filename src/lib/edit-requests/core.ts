@@ -2,7 +2,8 @@
 // call: everything here is directly runnable from scripts/verify-fuel-edits.ts, which
 // is the only way this logic can be verified in a repo with no test framework.
 import prisma from '@/lib/prisma';
-import type { FieldValues } from './types';
+import { getApplier } from './registry';
+import type { EditOperation, EditRequestResult, FieldValues } from './types';
 
 /**
  * Strips everything outside the whitelist. Called at REQUEST time, not approval time,
@@ -49,4 +50,66 @@ export async function findOpenRequest(entityType: string, entityId: string) {
         where: { entityType, entityId, status: 'Pending' },
         orderBy: { createdAt: 'desc' },
     });
+}
+
+/**
+ * Runs an approved request against the live row. Session-free on purpose — the caller
+ * has already established that the actor holds the applier's approvePermission.
+ *
+ * Order matters: snapshot BEFORE the write, because the recompute hook needs the old
+ * date and truckId to find the successor whose efficiency depended on this row.
+ */
+export async function applyApprovedRequest(
+    requestId: string,
+    opts?: { acceptStale?: boolean }
+): Promise<EditRequestResult> {
+    const request = await prisma.editRequest.findUnique({ where: { id: requestId } });
+    if (!request) return { error: 'Edit request not found' };
+    if (request.status !== 'Pending') {
+        return { error: `This request has already been ${request.status.toLowerCase()}` };
+    }
+
+    const applier = getApplier(request.entityType);
+    if (!applier) return { error: `No applier registered for ${request.entityType}` };
+
+    const current = await applier.load(request.entityId);
+    if (!current) return { error: 'The record this request targets no longer exists' };
+
+    const before = { ...current };
+    const operation = request.operation as EditOperation;
+    const changes = (request.proposedChanges ?? {}) as FieldValues;
+
+    if (request.previousValues) {
+        const stale = detectStale(
+            request.previousValues as FieldValues,
+            snapshotOf(current, applier.editableFields),
+            applier.editableFields
+        );
+        if (stale.length && !opts?.acceptStale) {
+            return {
+                error: `This record changed since the request was made (${stale.join(', ')}). Review the current values and confirm.`,
+            };
+        }
+    }
+
+    if (operation === 'update') {
+        if (Object.keys(changes).length === 0) return { error: 'This request proposes no changes' };
+        if (applier.validate) {
+            const problem = await applier.validate(changes, current);
+            if (problem) return { error: problem };
+        }
+        await applier.applyUpdate(request.entityId, changes);
+    } else {
+        await applier.applyDelete(request.entityId);
+    }
+
+    // After the write, so a delete's recompute sees the row already gone.
+    if (applier.onApplied) await applier.onApplied(before, operation, changes);
+
+    await prisma.editRequest.update({
+        where: { id: request.id },
+        data: { status: 'Approved', approvedAt: new Date() },
+    });
+
+    return { success: true };
 }

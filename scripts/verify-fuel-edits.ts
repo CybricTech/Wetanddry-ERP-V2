@@ -10,7 +10,13 @@
  */
 import { PrismaClient } from '../src/generated/prisma';
 import { recomputeFuelLogEfficiency, findSuccessorLogId } from '../src/lib/fuel-metrics';
-import { pickEditable, snapshotOf, detectStale, findOpenRequest } from '../src/lib/edit-requests/core';
+import {
+    pickEditable,
+    snapshotOf,
+    detectStale,
+    findOpenRequest,
+    applyApprovedRequest,
+} from '../src/lib/edit-requests/core';
 import { getApplier } from '../src/lib/edit-requests/registry';
 import { getFuelStockPosition } from '../src/lib/fuel-stock';
 
@@ -148,6 +154,81 @@ async function main() {
     check('lowering liters is allowed', await applier.validate!({ liters: 1 }, loaded), null);
     check('zero liters refused', typeof (await applier.validate!({ liters: 0 }, loaded)) === 'string', true);
     check('cost-only edit allowed', await applier.validate!({ cost: 42 }, loaded), null);
+
+    console.log('\nTask 4 - applying an approved request');
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    await prisma.fuelLog.update({ where: { id: l3.id }, data: { mileage: 2000, liters: 100 } });
+    await recomputeFuelLogEfficiency(l3.id);
+
+    // A fourth fill, two positions after l2, to prove the recompute set stops at the
+    // immediate successor (approach B) rather than walking the whole chain.
+    const l4 = await prisma.fuelLog.create({ data: { truckId: truck.id, date: d(5), liters: 100, cost: 1, mileage: 3000, efficiency: null } });
+    await recomputeFuelLogEfficiency(l4.id);
+    const l4Frozen = (await prisma.fuelLog.findUnique({ where: { id: l4.id } }))!.efficiency;
+
+    // An update that moves mileage recomputes l2 and its immediate successor l3.
+    const upd = await prisma.editRequest.create({
+        data: {
+            entityType: 'fuel_log', entityId: l2.id, operation: 'update', requestedBy: TAG,
+            proposedChanges: { mileage: 1400 },
+            previousValues: snapshotOf((await applier.load(l2.id))!, applier.editableFields) as object,
+        },
+    });
+    check('update applies', await applyApprovedRequest(upd.id), { success: true });
+    check('mileage written', (await prisma.fuelLog.findUnique({ where: { id: l2.id } }))!.mileage, 1400);
+    check('l2 efficiency recomputed', (await prisma.fuelLog.findUnique({ where: { id: l2.id } }))!.efficiency, 4);
+    check('successor l3 recomputed', (await prisma.fuelLog.findUnique({ where: { id: l3.id } }))!.efficiency, 3);
+    check('two fills later stays frozen', (await prisma.fuelLog.findUnique({ where: { id: l4.id } }))!.efficiency, l4Frozen);
+    check('request marked Approved', (await prisma.editRequest.findUnique({ where: { id: upd.id } }))!.status, 'Approved');
+
+    // A cost-only edit must not disturb efficiency.
+    const effBefore = (await prisma.fuelLog.findUnique({ where: { id: l2.id } }))!.efficiency;
+    const costOnly = await prisma.editRequest.create({
+        data: {
+            entityType: 'fuel_log', entityId: l2.id, operation: 'update', requestedBy: TAG,
+            proposedChanges: { cost: 777 },
+            previousValues: snapshotOf((await applier.load(l2.id))!, applier.editableFields) as object,
+        },
+    });
+    await applyApprovedRequest(costOnly.id);
+    check('cost written', (await prisma.fuelLog.findUnique({ where: { id: l2.id } }))!.cost, 777);
+    check('cost-only leaves efficiency alone', (await prisma.fuelLog.findUnique({ where: { id: l2.id } }))!.efficiency, effBefore);
+
+    // Staleness blocks by default and is overridable explicitly.
+    const staleReq = await prisma.editRequest.create({
+        data: {
+            entityType: 'fuel_log', entityId: l2.id, operation: 'update', requestedBy: TAG,
+            proposedChanges: { cost: 5 },
+            previousValues: { date: null, liters: 0, cost: 0, mileage: 0 },
+        },
+    });
+    check('stale request blocked', 'error' in (await applyApprovedRequest(staleReq.id)), true);
+    check('stale request still Pending', (await prisma.editRequest.findUnique({ where: { id: staleReq.id } }))!.status, 'Pending');
+    check('stale accepted when forced', await applyApprovedRequest(staleReq.id, { acceptStale: true }), { success: true });
+
+    // A delete returns litres to stock and nulls the FuelRequest link.
+    const stockBefore = (await getFuelStockPosition()).currentStock;
+    const linked = await prisma.fuelRequest.create({
+        data: { truckId: truck.id, liters: 100, status: 'Approved', requestedBy: TAG, fuelLogId: l3.id },
+    });
+    const del = await prisma.editRequest.create({
+        data: {
+            entityType: 'fuel_log', entityId: l3.id, operation: 'delete', requestedBy: TAG,
+            previousValues: snapshotOf((await applier.load(l3.id))!, applier.editableFields) as object,
+        },
+    });
+    check('delete applies', await applyApprovedRequest(del.id), { success: true });
+    check('log gone', await prisma.fuelLog.findUnique({ where: { id: l3.id } }), null);
+    check('litres returned to stock', round2((await getFuelStockPosition()).currentStock), round2(stockBefore + 100));
+    const linkedAfter = (await prisma.fuelRequest.findUnique({ where: { id: linked.id } }))!;
+    check('FuelRequest link nulled', linkedAfter.fuelLogId, null);
+    check('FuelRequest stays Approved', linkedAfter.status, 'Approved');
+    await prisma.fuelRequest.delete({ where: { id: linked.id } });
+
+    // An already-decided request cannot be applied twice.
+    check('double-apply refused', 'error' in (await applyApprovedRequest(upd.id)), true);
+
+    check('BOUNDARY: Truck.mileage still untouched', (await prisma.truck.findUnique({ where: { id: truck.id } }))!.mileage, 0);
 
     await cleanup();
     console.log(failures === 0 ? '\nPASS - all assertions held' : `\nFAIL - ${failures} assertion(s) failed`);
