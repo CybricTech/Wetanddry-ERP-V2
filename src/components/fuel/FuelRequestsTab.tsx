@@ -4,6 +4,8 @@ import { useState, useTransition } from 'react'
 import { ClipboardList, Check, X, Loader2, AlertTriangle, Ban } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import { approveFuelRequest, rejectFuelRequest, cancelFuelRequest } from '@/lib/actions/fuel'
+import FuelEditRequestsSection from './FuelEditRequestsSection'
+import type { EditRequestView } from '@/lib/edit-requests/types'
 
 export interface FuelRequest {
     id: string
@@ -34,11 +36,13 @@ export default function FuelRequestsTab({
     requests,
     canApprove,
     currentUserId,
+    editRequests,
 }: {
     requests: FuelRequest[]
     canApprove: boolean
     /** Used to decide whose pending requests can be withdrawn. */
     currentUserId: string | null
+    editRequests: EditRequestView[]
 }) {
     const [filter, setFilter] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All')
     const [approving, setApproving] = useState<FuelRequest | null>(null)
@@ -48,6 +52,7 @@ export default function FuelRequestsTab({
 
     return (
         <div className="space-y-5">
+            <FuelEditRequestsSection requests={editRequests} canApprove={canApprove} />
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
                 {(['All', 'Pending', 'Approved', 'Rejected'] as const).map(option => {
                     const count =
