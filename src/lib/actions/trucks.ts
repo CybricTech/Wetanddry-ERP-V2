@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
 import { auth } from '@/auth'
 import { checkPermission, hasPermission } from '@/lib/permissions'
+import { recomputeTruckDerivedValues } from '@/lib/truck-mileage'
 import {
     notifyMaintenanceDue,
     notifyDocumentExpiring,
@@ -108,7 +109,12 @@ export async function updateTruck(id: string, formData: FormData) {
 
             capacity: capacity || null,
             purchaseDate: new Date(purchaseDate),
+            // The form odometer is the one mileage source with no history of its own -
+            // maintenance records and fuel logs each keep theirs - so it is stamped here
+            // to survive recomputeTruckDerivedValues().
             mileage: parseInt(mileage) || 0,
+            manualMileage: parseInt(mileage) || 0,
+            manualMileageAt: new Date(),
             status,
         },
     })
@@ -129,15 +135,6 @@ export async function deleteTruck(id: string) {
 
     revalidatePath('/trucks')
     redirect('/trucks')
-}
-
-export async function updateTruckMileage(id: string, mileage: number) {
-    await prisma.truck.update({
-        where: { id },
-        data: { mileage },
-    })
-    revalidatePath(`/trucks/${id}`)
-    revalidatePath('/trucks')
 }
 
 // ============ MAINTENANCE RECORDS ============
@@ -184,9 +181,9 @@ export async function createMaintenanceRecord(formData: FormData): Promise<{ suc
 
         if (isAutoApproved) {
             // Side effects belong to approval, not creation - a pending record must not
-            // move the truck's service history. applyMaintenanceRecordToTruck is the one
+            // move the truck's service history. recomputeTruckDerivedValues is the one
             // place that does it, shared with approveMaintenanceRecord().
-            await applyMaintenanceRecordToTruck(record.id)
+            await recomputeTruckDerivedValues(record.truckId)
         } else {
             const truck = await prisma.truck.findUnique({ where: { id: truckId } })
             notifyApprovers(
@@ -205,35 +202,6 @@ export async function createMaintenanceRecord(formData: FormData): Promise<{ suc
         console.error('Failed to create maintenance record:', error)
         return { error: error instanceof Error ? error.message : 'Failed to create maintenance record' }
     }
-}
-
-/**
- * Applies an approved maintenance record to its truck. Split out so creation by an
- * approver and later approval of someone else's record go through identical logic.
- */
-async function applyMaintenanceRecordToTruck(recordId: string) {
-    const record = await prisma.maintenanceRecord.findUnique({
-        where: { id: recordId },
-        include: { truck: true },
-    })
-    if (!record) return
-
-    // Records can now be approved out of order - an older one signed off after a newer
-    // one must not drag the truck's service history or odometer backwards.
-    const isNewerService =
-        !record.truck.lastServiceDate || record.date > record.truck.lastServiceDate
-    const isHigherMileage =
-        record.mileageAtService != null && record.mileageAtService > record.truck.mileage
-
-    if (!isNewerService && !isHigherMileage) return
-
-    await prisma.truck.update({
-        where: { id: record.truckId },
-        data: {
-            ...(isNewerService ? { lastServiceDate: record.date } : {}),
-            ...(isHigherMileage ? { mileage: record.mileageAtService! } : {}),
-        },
-    })
 }
 
 export async function getMaintenanceRecords(truckId?: string) {
@@ -383,7 +351,7 @@ export async function approveMaintenanceRecord(id: string): Promise<{ success: t
 
         // Deferred side effects - only now does the truck's history move, and only now
         // does a schedule this record completed advance to its next interval.
-        await applyMaintenanceRecordToTruck(id)
+        await recomputeTruckDerivedValues(record.truckId)
         if (record.scheduleId) {
             await rollScheduleForward(record.scheduleId)
         }
@@ -640,7 +608,7 @@ export async function completeScheduledMaintenance(scheduleId: string, formData:
     // rolls forward when the record is approved instead.
     if (isAutoApproved) {
         await rollScheduleForward(scheduleId)
-        await applyMaintenanceRecordToTruck(record.id)
+        await recomputeTruckDerivedValues(schedule.truckId)
     }
 
     revalidatePath(`/trucks/${schedule.truckId}`)
