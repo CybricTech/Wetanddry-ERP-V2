@@ -230,6 +230,23 @@ async function main() {
 
     check('BOUNDARY: Truck.mileage still untouched', (await prisma.truck.findUnique({ where: { id: truck.id } }))!.mileage, 0);
 
+    console.log('\nTask 10 - odometer boundary');
+    // The truck was created with mileage 0 and every assertion above has run against
+    // it. If any path in this feature wrote the odometer, this fails.
+    check('Truck.mileage never written by this feature', (await prisma.truck.findUnique({ where: { id: truck.id } }))!.mileage, 0);
+
+    // Static guard: the concurrent odometer work owns Truck writes, so none of these
+    // modules may contain one, however the runtime assertion above happens to pass.
+    const fs = await import('fs');
+    for (const file of [
+        'src/lib/fuel-metrics.ts',
+        'src/lib/edit-requests/fuel-log.ts',
+        'src/lib/edit-requests/core.ts',
+        'src/lib/actions/edit-requests.ts',
+    ]) {
+        check(`${file} does not write truck`, /prisma\.truck\.update/.test(fs.readFileSync(file, 'utf8')), false);
+    }
+
     await cleanup();
     console.log(failures === 0 ? '\nPASS - all assertions held' : `\nFAIL - ${failures} assertion(s) failed`);
     process.exit(failures === 0 ? 0 : 1);

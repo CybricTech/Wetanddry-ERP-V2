@@ -68,6 +68,24 @@ async function main() {
     check('Storekeeper keeps log_fuel', hasPermission('Storekeeper', 'log_fuel'), true);
     check('Accountant keeps log_fuel', hasPermission('Accountant', 'log_fuel'), true);
 
+
+    console.log('\nFuel log edits - request is open to page holders, approval is not');
+    for (const role of ROLES) {
+        // All four built-in roles can reach the fuel page, so all four may request.
+        check(`view_fuel_logs / ${role}`, hasPermission(role, 'view_fuel_logs'), true);
+        // Approving is Super Admin only until delegated from Settings > Roles.
+        check(`approve_fuel_requests / ${role}`, hasPermission(role, 'approve_fuel_requests'), role === 'Super Admin');
+    }
+    // The feature reuses view_fuel_logs and approve_fuel_requests; it must not have
+    // invented a permission, which would require a sync-role-permissions run to work.
+    // Exact names, not substrings - 'view_fuel_logs' contains 'fuel_log'.
+    const INVENTED = ['edit_fuel_log', 'delete_fuel_log', 'approve_edit_requests', 'manage_edit_requests'];
+    const superAdminPerms = ROLE_PERMISSIONS[Role.SUPER_ADMIN] as readonly string[];
+    check(
+        'no new permission invented for fuel edits',
+        INVENTED.some((p) => superAdminPerms.includes(p)),
+        false
+    );
     console.log('\nPhase 2 - built-in permission sets intact');
     for (const role of Object.values(Role)) {
         const missing = ROLE_PERMISSIONS[role].filter((p) => !hasPermission(role, p));
