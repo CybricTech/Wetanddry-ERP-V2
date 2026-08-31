@@ -1,8 +1,19 @@
 import StaffForm from '@/components/staff/StaffForm'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { auth } from '@/auth'
+import { hasPermission } from '@/lib/permissions'
 
-export default function AddStaffPage() {
+export default async function AddStaffPage() {
+    // createStaff rejects callers without manage_staff, so anyone who can only
+    // view the registry would fill in the whole form and lose it on Save.
+    const session = await auth()
+    const userRole = session?.user?.role
+    if (!userRole || !hasPermission(userRole, 'manage_staff')) {
+        redirect('/staff')
+    }
+
     return (
         <div className="max-w-4xl mx-auto space-y-8">
             <div className="flex items-center gap-4">

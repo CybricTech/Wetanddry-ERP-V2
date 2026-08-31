@@ -68,7 +68,7 @@ The system defines four distinct roles:
 | Permission | Super Admin | Manager | Storekeeper | Accountant |
 |------------|:-----------:|:-------:|:-----------:|:----------:|
 | `manage_users` | ✅ | ❌ | ❌ | ❌ |
-| `manage_staff` | ✅ | ❌ | ❌ | ❌ |
+| `manage_staff` | ✅ | ✅ | ❌ | ❌ |
 | `view_staff` | ✅ | ✅ | ❌ | ❌ |
 
 ### Analytics & Settings
