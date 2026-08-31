@@ -6,6 +6,7 @@ import { auth } from '@/auth'
 import { hasPermission } from '@/lib/permissions'
 import { findOpenRequest, pickEditable, snapshotOf, applyApprovedRequest } from '@/lib/edit-requests/core'
 import { getApplier } from '@/lib/edit-requests/registry'
+import { notifyApprovers, notifyRequester } from '@/lib/actions/notifications'
 import type { EditOperation, EditRequestResult, FieldValues } from '@/lib/edit-requests/types'
 
 // A 'use server' module may only export async functions. All shared logic lives in
@@ -49,7 +50,7 @@ export async function createEditRequest(
         return { error: 'A reason is required to request deletion' }
     }
 
-    await prisma.editRequest.create({
+    const created = await prisma.editRequest.create({
         data: {
             entityType,
             entityId,
@@ -61,6 +62,14 @@ export async function createEditRequest(
             requestedById: session.user.id ?? undefined,
         },
     })
+
+    await notifyApprovers(
+        'fuel_edit_pending',
+        operation === 'delete' ? 'Fuel log deletion requested' : 'Fuel log edit requested',
+        `${created.requestedBy} requested ${operation === 'delete' ? 'deletion of' : 'a change to'} ${applier.describe(current)}.`,
+        'edit_request',
+        created.id
+    )
 
     revalidatePath('/fuel')
     return { success: true }
@@ -88,6 +97,17 @@ export async function approveEditRequest(
         where: { id },
         data: { approvedBy: session.user.name || session.user.email || role },
     })
+
+    if (request.requestedById) {
+        await notifyRequester(
+            request.requestedById,
+            'fuel_edit_approved',
+            'Fuel log change approved',
+            `Your ${request.operation === 'delete' ? 'deletion' : 'edit'} request was approved.`,
+            'edit_request',
+            request.id
+        )
+    }
 
     revalidatePath('/fuel')
     return { success: true }
@@ -119,6 +139,17 @@ export async function rejectEditRequest(id: string, reason: string): Promise<Edi
             approvedAt: new Date(),
         },
     })
+
+    if (request.requestedById) {
+        await notifyRequester(
+            request.requestedById,
+            'fuel_edit_rejected',
+            'Fuel log change rejected',
+            `Your ${request.operation === 'delete' ? 'deletion' : 'edit'} request was rejected: ${reason.trim()}`,
+            'edit_request',
+            request.id
+        )
+    }
 
     revalidatePath('/fuel')
     return { success: true }

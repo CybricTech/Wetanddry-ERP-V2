@@ -53,6 +53,9 @@ export type NotificationType =
     | 'fuel_request_pending'
     | 'fuel_request_approved'
     | 'fuel_request_rejected'
+    | 'fuel_edit_pending'
+    | 'fuel_edit_approved'
+    | 'fuel_edit_rejected'
     // System
     | 'user_created'
     | 'role_changed';
@@ -132,6 +135,11 @@ const NOTIFICATION_CONFIG: Record<NotificationType, {
     fuel_request_pending: { defaultPriority: 'high', requiredPermissions: ['approve_fuel_requests'] },
     fuel_request_approved: { defaultPriority: 'medium' },
     fuel_request_rejected: { defaultPriority: 'medium' },
+
+    // Fuel log edit & delete approvals -> holders of approve_fuel_requests
+    fuel_edit_pending: { defaultPriority: 'high', requiredPermissions: ['approve_fuel_requests'] },
+    fuel_edit_approved: { defaultPriority: 'medium' },
+    fuel_edit_rejected: { defaultPriority: 'medium' },
 
     // System/Admin → Super Admin only
     user_created: { defaultPriority: 'low', targetRoles: [Role.SUPER_ADMIN] },
@@ -490,7 +498,8 @@ export async function notifyApprovers(
         | 'stock_transaction_pending'
         | 'material_request_pending'
         | 'maintenance_approval_pending'
-        | 'fuel_request_pending',
+        | 'fuel_request_pending'
+        | 'fuel_edit_pending',
     title: string,
     message: string,
     entityType: string,
