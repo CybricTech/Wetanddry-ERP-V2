@@ -8,6 +8,8 @@
  */
 import { PrismaClient } from '../src/generated/prisma';
 import { recomputeTruckDerivedValues } from '../src/lib/truck-mileage';
+import { getApplier } from '../src/lib/edit-requests/registry';
+import { pickEditable, applyApprovedRequest, snapshotOf } from '../src/lib/edit-requests/core';
 
 const prisma = new PrismaClient();
 const PLATE = '__verify_edit_approvals';
@@ -124,6 +126,124 @@ async function main() {
         });
         await recomputeTruckDerivedValues(truck.id);
         check('historical efficiency untouched', (await prisma.fuelLog.findUniqueOrThrow({ where: { id: log.id } })).efficiency, 4.2);
+        await cleanup();
+    }
+
+    console.log('\nApplier - registered for both maintenance entity types');
+    {
+        check('maintenance_record registered', getApplier('maintenance_record') !== null, true);
+        check('maintenance_schedule registered', getApplier('maintenance_schedule') !== null, true);
+        const applier = getApplier('maintenance_record')!;
+        check('request permission', applier.requestPermission, 'manage_maintenance');
+        check('approve permission', applier.approvePermission, 'approve_maintenance');
+    }
+
+    console.log('\nApplier - whitelist strips unsafe fields (spec: verification 7)');
+    {
+        const applier = getApplier('maintenance_record')!;
+        const clean = pickEditable(
+            { cost: 500, notes: 'legit', approvalStatus: 'Approved', truckId: 'other', approvedBy: 'forged', id: 'reassigned' },
+            applier.editableFields
+        );
+        check('keeps cost', clean.cost, 500);
+        check('keeps notes', clean.notes, 'legit');
+        check('strips approvalStatus', 'approvalStatus' in clean, false);
+        check('strips truckId', 'truckId' in clean, false);
+        check('strips approvedBy', 'approvedBy' in clean, false);
+        check('strips id', 'id' in clean, false);
+    }
+
+    console.log('\nApprove an update - applies fields and recomputes (spec: verification 3)');
+    {
+        const truck = await makeTruck();
+        const record = await prisma.maintenanceRecord.create({
+            data: { truckId: truck.id, date: new Date('2026-03-01'), type: 'Oil Change', cost: 100, mileageAtService: 500_000, approvalStatus: 'Approved' },
+        });
+        await recomputeTruckDerivedValues(truck.id);
+
+        const applier = getApplier('maintenance_record')!;
+        const current = (await applier.load(record.id))!;
+        const request = await prisma.editRequest.create({
+            data: {
+                entityType: 'maintenance_record',
+                entityId: record.id,
+                operation: 'update',
+                proposedChanges: { cost: 250, mileageAtService: 50_000 },
+                previousValues: snapshotOf(current, applier.editableFields) as object,
+                requestedBy: 'Verify Manager',
+            },
+        });
+
+        const result = await applyApprovedRequest(request.id);
+        check('apply succeeds', 'success' in result, true);
+
+        const after = await prisma.maintenanceRecord.findUniqueOrThrow({ where: { id: record.id } });
+        check('cost applied', after.cost, 250);
+        check('mileage applied', after.mileageAtService, 50_000);
+        check('approvalStatus untouched by the edit', after.approvalStatus, 'Approved');
+        check('truck recomputed downward', (await prisma.truck.findUniqueOrThrow({ where: { id: truck.id } })).mileage, 50_000);
+        await cleanup();
+    }
+
+    console.log('\nApprove a delete - removes and recomputes (spec: verification 4)');
+    {
+        const truck = await makeTruck();
+        const keep = await prisma.maintenanceRecord.create({
+            data: { truckId: truck.id, date: new Date('2026-01-01'), type: 'Service', cost: 50, mileageAtService: 40_000, approvalStatus: 'Approved' },
+        });
+        const drop = await prisma.maintenanceRecord.create({
+            data: { truckId: truck.id, date: new Date('2026-03-01'), type: 'Oil Change', cost: 100, mileageAtService: 500_000, approvalStatus: 'Approved' },
+        });
+        await recomputeTruckDerivedValues(truck.id);
+
+        const applier = getApplier('maintenance_record')!;
+        const current = (await applier.load(drop.id))!;
+        const request = await prisma.editRequest.create({
+            data: {
+                entityType: 'maintenance_record',
+                entityId: drop.id,
+                operation: 'delete',
+                previousValues: snapshotOf(current, applier.editableFields) as object,
+                requestedBy: 'Verify Manager',
+            },
+        });
+        await applyApprovedRequest(request.id);
+
+        check('record deleted', await prisma.maintenanceRecord.findUnique({ where: { id: drop.id } }), null);
+        check('surviving record kept', (await prisma.maintenanceRecord.findUnique({ where: { id: keep.id } }))?.cost, 50);
+        const after = await prisma.truck.findUniqueOrThrow({ where: { id: truck.id } });
+        check('truck mileage recomputed after delete', after.mileage, 40_000);
+        check('lastServiceDate recomputed after delete', after.lastServiceDate?.toISOString(), new Date('2026-01-01').toISOString());
+        await cleanup();
+    }
+
+    console.log('\nSchedule delete leaves service history intact');
+    {
+        const truck = await makeTruck();
+        const schedule = await prisma.maintenanceSchedule.create({
+            data: { truckId: truck.id, type: 'Oil Change', intervalType: 'date', intervalDays: 90, approvalStatus: 'Approved' },
+        });
+        const record = await prisma.maintenanceRecord.create({
+            data: { truckId: truck.id, date: new Date('2026-02-01'), type: 'Oil Change', cost: 75, approvalStatus: 'Approved', scheduleId: schedule.id },
+        });
+
+        const applier = getApplier('maintenance_schedule')!;
+        const current = (await applier.load(schedule.id))!;
+        const request = await prisma.editRequest.create({
+            data: {
+                entityType: 'maintenance_schedule',
+                entityId: schedule.id,
+                operation: 'delete',
+                previousValues: snapshotOf(current, applier.editableFields) as object,
+                requestedBy: 'Verify Manager',
+            },
+        });
+        await applyApprovedRequest(request.id);
+
+        check('schedule deleted', await prisma.maintenanceSchedule.findUnique({ where: { id: schedule.id } }), null);
+        const survivor = await prisma.maintenanceRecord.findUnique({ where: { id: record.id } });
+        check('service history survives', survivor?.cost, 75);
+        check('dangling scheduleId left as-is', survivor?.scheduleId, schedule.id);
         await cleanup();
     }
 
