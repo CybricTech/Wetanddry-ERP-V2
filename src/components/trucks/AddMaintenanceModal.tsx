@@ -5,6 +5,19 @@ import { X, Wrench, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
 import { DatePicker } from '@/components/ui/date-picker'
+import MaintenanceTypeField from './MaintenanceTypeField'
+
+// Presets offered in the dropdown. Anything else is entered through Other, which is
+// why this list does not include it.
+const RECORD_TYPES = [
+    'Oil Change',
+    'Tire Replacement',
+    'Brake Inspection',
+    'Battery Replacement',
+    'Full Service',
+    'Engine Repair',
+    'Transmission Service',
+] as const
 
 function SubmitButton({ needsApproval, isEditing }: { needsApproval: boolean; isEditing: boolean }) {
     const { pending } = useFormStatus()
@@ -105,28 +118,7 @@ export default function AddMaintenanceModal({ truckId, truckMileage, canApprove 
                             </span>
                         </div>
                     )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Maintenance Type <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                            name="type"
-                            required
-                            defaultValue={record?.type ?? ''}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        >
-                            <option value="">Select type</option>
-                            <option value="Oil Change">Oil Change</option>
-                            <option value="Tire Replacement">Tire Replacement</option>
-                            <option value="Brake Inspection">Brake Inspection</option>
-                            <option value="Battery Replacement">Battery Replacement</option>
-                            <option value="Full Service">Full Service</option>
-                            <option value="Engine Repair">Engine Repair</option>
-                            <option value="Transmission Service">Transmission Service</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
+                    <MaintenanceTypeField options={RECORD_TYPES} defaultValue={record?.type} />
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>

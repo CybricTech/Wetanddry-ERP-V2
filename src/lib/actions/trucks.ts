@@ -177,7 +177,7 @@ export async function deleteTruck(id: string) {
 export async function createMaintenanceRecord(formData: FormData): Promise<{ success: true } | { error: string }> {
     try {
         const truckId = formData.get('truckId') as string
-        const type = formData.get('type') as string
+        const type = (formData.get('type') as string)?.trim()
         const date = formData.get('date') as string
         const cost = formData.get('cost') as string
         const mileageAtService = formData.get('mileageAtService') as string
@@ -296,7 +296,7 @@ export async function updateMaintenanceRecord(
         if (!session?.user?.role) return { error: 'Unauthorized' }
         checkPermission(session.user.role, 'manage_maintenance')
 
-        const type = formData.get('type') as string
+        const type = (formData.get('type') as string)?.trim()
         const date = formData.get('date') as string
         const cost = formData.get('cost') as string
 
@@ -379,7 +379,7 @@ export async function getMaintenanceRecords(truckId?: string) {
 export async function createMaintenanceSchedule(formData: FormData): Promise<{ success: true } | { error: string }> {
     try {
         const truckId = formData.get('truckId') as string
-        const type = formData.get('type') as string
+        const type = (formData.get('type') as string)?.trim()
         const intervalType = formData.get('intervalType') as string
         const intervalDays = formData.get('intervalDays') as string
         const intervalMileage = formData.get('intervalMileage') as string
