@@ -21,6 +21,7 @@ export type PendingApprovalKind =
     | 'maintenance_schedule'
     | 'fuel_request'
     | 'fuel_log_edit'
+    | 'maintenance_edit'
 
 export interface PendingApprovalEntry {
     id: string
@@ -47,7 +48,7 @@ export async function getAllPendingApprovals(): Promise<{
 
     const can = (permission: Permission) => hasPermission(role, permission)
 
-    const [items, transactions, materialRequests, records, schedules, fuelRequests, fuelLogEdits] = await Promise.all([
+    const [items, transactions, materialRequests, records, schedules, fuelRequests, fuelLogEdits, maintenanceEdits] = await Promise.all([
         can('approve_inventory_items')
             ? prisma.inventoryItem.findMany({
                   where: { status: 'Pending' },
@@ -93,6 +94,15 @@ export async function getAllPendingApprovals(): Promise<{
         can('approve_fuel_requests')
             ? prisma.editRequest.findMany({
                   where: { entityType: 'fuel_log', status: 'Pending' },
+                  orderBy: { createdAt: 'desc' },
+              })
+            : [],
+        can('approve_maintenance')
+            ? prisma.editRequest.findMany({
+                  where: {
+                      entityType: { in: ['maintenance_record', 'maintenance_schedule'] },
+                      status: 'Pending',
+                  },
                   orderBy: { createdAt: 'desc' },
               })
             : [],
@@ -168,6 +178,21 @@ export async function getAllPendingApprovals(): Promise<{
             requestedBy: edit.requestedBy,
             createdAt: edit.createdAt,
             href: '/fuel',
+        })),
+        ...maintenanceEdits.map(edit => ({
+            id: edit.id,
+            kind: 'maintenance_edit' as const,
+            module: 'Fleet' as const,
+            title:
+                edit.entityType === 'maintenance_schedule'
+                    ? `Service schedule ${edit.operation === 'delete' ? 'deletion' : 'edit'}`
+                    : `Maintenance record ${edit.operation === 'delete' ? 'deletion' : 'edit'}`,
+            detail: `${(edit.previousValues as { type?: string } | null)?.type ?? 'Record'} - ${edit.operation === 'delete' ? 'deletion' : 'change'} awaiting approval`,
+            requestedBy: edit.requestedBy,
+            createdAt: edit.createdAt,
+            // The truck page owns the approve/reject UI, so the queue links there. The
+            // request carries no truckId, so the row is found by its entity instead.
+            href: '/trucks',
         })),
     ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 

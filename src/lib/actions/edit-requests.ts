@@ -63,15 +63,17 @@ export async function createEditRequest(
         },
     })
 
+    // Applier-driven, not hardcoded: the same core serves fuel logs, maintenance
+    // records and schedules, and each must name itself in the notification it fires.
     await notifyApprovers(
-        'fuel_edit_pending',
-        operation === 'delete' ? 'Fuel log deletion requested' : 'Fuel log edit requested',
+        applier.notifications.pending as 'fuel_edit_pending',
+        `${applier.noun} ${operation === 'delete' ? 'deletion' : 'edit'} requested`,
         `${created.requestedBy} requested ${operation === 'delete' ? 'deletion of' : 'a change to'} ${applier.describe(current)}.`,
         'edit_request',
         created.id
     )
 
-    revalidatePath('/fuel')
+    for (const path of applier.revalidatePaths(current)) revalidatePath(path)
     return { success: true }
 }
 
@@ -90,6 +92,10 @@ export async function approveEditRequest(
     if (!applier) return { error: 'Unknown record type' }
     if (!hasPermission(role, applier.approvePermission)) return { error: 'Unauthorized' }
 
+    // Captured before the write: a delete leaves nothing to load afterwards, and the
+    // revalidate paths are derived from the entity (a truck id, for instance).
+    const target = (await applier.load(request.entityId)) ?? {}
+
     const result = await applyApprovedRequest(id, opts)
     if ('error' in result) return result
 
@@ -101,15 +107,15 @@ export async function approveEditRequest(
     if (request.requestedById) {
         await notifyRequester(
             request.requestedById,
-            'fuel_edit_approved',
-            'Fuel log change approved',
+            applier.notifications.approved,
+            `${applier.noun} change approved`,
             `Your ${request.operation === 'delete' ? 'deletion' : 'edit'} request was approved.`,
             'edit_request',
             request.id
         )
     }
 
-    revalidatePath('/fuel')
+    for (const path of applier.revalidatePaths(target)) revalidatePath(path)
     return { success: true }
 }
 
@@ -143,15 +149,17 @@ export async function rejectEditRequest(id: string, reason: string): Promise<Edi
     if (request.requestedById) {
         await notifyRequester(
             request.requestedById,
-            'fuel_edit_rejected',
-            'Fuel log change rejected',
+            applier.notifications.rejected,
+            `${applier.noun} change rejected`,
             `Your ${request.operation === 'delete' ? 'deletion' : 'edit'} request was rejected: ${reason.trim()}`,
             'edit_request',
             request.id
         )
     }
 
-    revalidatePath('/fuel')
+    // A rejection leaves the live row untouched, so it is still there to load.
+    const target = (await applier.load(request.entityId)) ?? {}
+    for (const path of applier.revalidatePaths(target)) revalidatePath(path)
     return { success: true }
 }
 

@@ -1,12 +1,12 @@
 'use client'
 
-import { createMaintenanceSchedule } from '@/lib/actions/trucks'
+import { createMaintenanceSchedule, updateMaintenanceSchedule } from '@/lib/actions/trucks'
 import { X, CalendarClock, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
 import { DatePicker } from '@/components/ui/date-picker'
 
-function SubmitButton({ needsApproval }: { needsApproval: boolean }) {
+function SubmitButton({ needsApproval, isEditing }: { needsApproval: boolean; isEditing: boolean }) {
     const { pending } = useFormStatus()
     return (
         <button
@@ -14,9 +14,29 @@ function SubmitButton({ needsApproval }: { needsApproval: boolean }) {
             disabled={pending}
             className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 transition-all font-semibold shadow-lg shadow-green-500/25 disabled:opacity-50"
         >
-            {pending ? 'Scheduling...' : needsApproval ? 'Submit for Approval' : 'Schedule Maintenance'}
+            {pending
+                ? 'Saving...'
+                : needsApproval
+                    ? 'Submit for Approval'
+                    : isEditing
+                        ? 'Save changes'
+                        : 'Schedule Maintenance'}
         </button>
     )
+}
+
+export interface MaintenanceScheduleDraft {
+    id: string
+    type: string
+    intervalType: string
+    intervalDays: number | null
+    intervalMileage: number | null
+    nextDueDate: Date | string | null
+    nextDueMileage: number | null
+    priority: string
+    isActive: boolean
+    notes: string | null
+    approvalStatus: string
 }
 
 interface ScheduleMaintenanceModalProps {
@@ -24,17 +44,25 @@ interface ScheduleMaintenanceModalProps {
     truckMileage: number
     /** False when this user's schedules queue for someone else to sign off. */
     canApprove?: boolean
+    /** Present to edit an existing schedule instead of creating one. */
+    schedule?: MaintenanceScheduleDraft
     onClose: () => void
 }
 
-export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApprove = false, onClose }: ScheduleMaintenanceModalProps) {
-    const [intervalType, setIntervalType] = useState('date')
+export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApprove = false, schedule, onClose }: ScheduleMaintenanceModalProps) {
+    const isEditing = Boolean(schedule)
+    const [intervalType, setIntervalType] = useState(schedule?.intervalType ?? 'date')
     const [error, setError] = useState<string | null>(null)
-    const needsApproval = !canApprove
+
+    // A schedule still awaiting its own approval lands directly - it has taken no
+    // effect and already awaits sign-off.
+    const needsApproval = !canApprove && !(isEditing && schedule!.approvalStatus === 'Pending')
 
     const handleSubmit = async (formData: FormData) => {
         setError(null)
-        const result = await createMaintenanceSchedule(formData)
+        const result = schedule
+            ? await updateMaintenanceSchedule(schedule.id, formData)
+            : await createMaintenanceSchedule(formData)
         if ('error' in result) {
             setError(result.error)
             return
@@ -54,7 +82,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                         <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
                             <CalendarClock className="text-green-600" size={20} />
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900">Schedule Maintenance</h2>
+                        <h2 className="text-xl font-bold text-gray-900">{isEditing ? 'Edit Service Schedule' : 'Schedule Maintenance'}</h2>
                     </div>
                     <button
                         onClick={onClose}
@@ -90,6 +118,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                         </label>
                         <select
                             name="type"
+                            defaultValue={schedule?.type ?? ''}
                             required
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                         >
@@ -137,7 +166,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                                     name="intervalDays"
                                     type="number"
                                     placeholder="e.g. 90"
-                                    defaultValue={90}
+                                    defaultValue={schedule?.intervalDays ?? 90}
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                                 />
                             </div>
@@ -147,7 +176,11 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                                 </label>
                                 <DatePicker
                                     name="nextDueDate"
-                                    value={defaultNextDue.toISOString().split('T')[0]}
+                                    value={
+                                        schedule?.nextDueDate
+                                            ? new Date(schedule.nextDueDate).toISOString().split('T')[0]
+                                            : defaultNextDue.toISOString().split('T')[0]
+                                    }
                                     className="focus:ring-green-500"
                                 />
                             </div>
@@ -164,7 +197,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                                     name="intervalMileage"
                                     type="number"
                                     placeholder="e.g. 10000"
-                                    defaultValue={10000}
+                                    defaultValue={schedule?.intervalMileage ?? 10000}
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                                 />
                             </div>
@@ -175,7 +208,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                                 <input
                                     name="nextDueMileage"
                                     type="number"
-                                    defaultValue={truckMileage + 10000}
+                                    defaultValue={schedule?.nextDueMileage ?? truckMileage + 10000}
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                                 />
                             </div>
@@ -188,6 +221,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                         </label>
                         <select
                             name="priority"
+                            defaultValue={schedule?.priority ?? 'Normal'}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                         >
                             <option value="Low">Low</option>
@@ -203,6 +237,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                         </label>
                         <textarea
                             name="notes"
+                            defaultValue={schedule?.notes ?? ''}
                             rows={2}
                             placeholder="Additional notes for this schedule..."
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all resize-none"
@@ -218,7 +253,7 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                             Cancel
                         </button>
                         <div className="flex-1">
-                            <SubmitButton needsApproval={needsApproval} />
+                            <SubmitButton needsApproval={needsApproval} isEditing={isEditing} />
                         </div>
                     </div>
                 </form>

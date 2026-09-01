@@ -6,6 +6,10 @@ import prisma from '@/lib/prisma'
 import { uploadToCloudinary, deleteFromCloudinary } from '@/lib/cloudinary'
 import { auth } from '@/auth'
 import { checkPermission, hasPermission } from '@/lib/permissions'
+import { recomputeTruckDerivedValues } from '@/lib/truck-mileage'
+import { createEditRequest } from '@/lib/actions/edit-requests'
+import { getApplier } from '@/lib/edit-requests/registry'
+import { pickEditable } from '@/lib/edit-requests/core'
 import {
     notifyMaintenanceDue,
     notifyDocumentExpiring,
@@ -85,7 +89,39 @@ export async function getTruck(id: string) {
         },
     })
 
-    return truck
+    if (!truck) return null
+
+    // EditRequest is polymorphic and has no FK to Truck, so pending requests are
+    // fetched by the ids on this page and attached for the client to badge rows with.
+    //
+    // Visibility: approvers see every request; everyone else sees only their own, so a
+    // requester can tell a submitted change from a landed one without exposing other
+    // people's pending edits to everyone who can open the Fleet page.
+    const session = await auth()
+    const canApprove = session?.user?.role
+        ? hasPermission(session.user.role, 'approve_maintenance')
+        : false
+    const viewer = session?.user?.name || session?.user?.email || null
+
+    const editRequests = await prisma.editRequest.findMany({
+        where: {
+            status: 'Pending',
+            ...(canApprove ? {} : { requestedBy: viewer ?? '__none__' }),
+            OR: [
+                {
+                    entityType: 'maintenance_record',
+                    entityId: { in: truck.maintenanceRecords.map((r) => r.id) },
+                },
+                {
+                    entityType: 'maintenance_schedule',
+                    entityId: { in: truck.maintenanceSchedules.map((s) => s.id) },
+                },
+            ],
+        },
+        orderBy: { createdAt: 'desc' },
+    })
+
+    return { ...truck, editRequests }
 }
 
 export async function updateTruck(id: string, formData: FormData) {
@@ -108,7 +144,12 @@ export async function updateTruck(id: string, formData: FormData) {
 
             capacity: capacity || null,
             purchaseDate: new Date(purchaseDate),
+            // The form odometer is the one mileage source with no history of its own -
+            // maintenance records and fuel logs each keep theirs - so it is stamped here
+            // to survive recomputeTruckDerivedValues().
             mileage: parseInt(mileage) || 0,
+            manualMileage: parseInt(mileage) || 0,
+            manualMileageAt: new Date(),
             status,
         },
     })
@@ -129,15 +170,6 @@ export async function deleteTruck(id: string) {
 
     revalidatePath('/trucks')
     redirect('/trucks')
-}
-
-export async function updateTruckMileage(id: string, mileage: number) {
-    await prisma.truck.update({
-        where: { id },
-        data: { mileage },
-    })
-    revalidatePath(`/trucks/${id}`)
-    revalidatePath('/trucks')
 }
 
 // ============ MAINTENANCE RECORDS ============
@@ -184,9 +216,9 @@ export async function createMaintenanceRecord(formData: FormData): Promise<{ suc
 
         if (isAutoApproved) {
             // Side effects belong to approval, not creation - a pending record must not
-            // move the truck's service history. applyMaintenanceRecordToTruck is the one
+            // move the truck's service history. recomputeTruckDerivedValues is the one
             // place that does it, shared with approveMaintenanceRecord().
-            await applyMaintenanceRecordToTruck(record.id)
+            await recomputeTruckDerivedValues(record.truckId)
         } else {
             const truck = await prisma.truck.findUnique({ where: { id: truckId } })
             notifyApprovers(
@@ -208,32 +240,128 @@ export async function createMaintenanceRecord(formData: FormData): Promise<{ suc
 }
 
 /**
- * Applies an approved maintenance record to its truck. Split out so creation by an
- * approver and later approval of someone else's record go through identical logic.
+ * Applies a change immediately, bypassing the approval queue.
+ *
+ * Routes through the same applier the approval path uses, so an approver's direct edit
+ * and a signed-off request cannot drift apart: same whitelist, same validation, same
+ * coercion, same recompute.
  */
-async function applyMaintenanceRecordToTruck(recordId: string) {
-    const record = await prisma.maintenanceRecord.findUnique({
-        where: { id: recordId },
-        include: { truck: true },
-    })
-    if (!record) return
+async function applyMaintenanceDirect(
+    entityType: 'maintenance_record' | 'maintenance_schedule',
+    id: string,
+    operation: 'update' | 'delete',
+    rawChanges: Record<string, unknown>
+): Promise<{ success: true } | { error: string }> {
+    const applier = getApplier(entityType)
+    if (!applier) return { error: 'Unknown record type' }
 
-    // Records can now be approved out of order - an older one signed off after a newer
-    // one must not drag the truck's service history or odometer backwards.
-    const isNewerService =
-        !record.truck.lastServiceDate || record.date > record.truck.lastServiceDate
-    const isHigherMileage =
-        record.mileageAtService != null && record.mileageAtService > record.truck.mileage
+    // Snapshotted before the write so a delete can still name its truck afterwards.
+    const before = await applier.load(id)
+    if (!before) return { error: 'Record not found' }
 
-    if (!isNewerService && !isHigherMileage) return
+    if (operation === 'update') {
+        const changes = pickEditable(rawChanges, applier.editableFields)
+        if (Object.keys(changes).length === 0) return { error: 'No editable fields were changed' }
+        if (applier.validate) {
+            const problem = await applier.validate(changes, before)
+            if (problem) return { error: problem }
+        }
+        await applier.applyUpdate(id, changes)
+    } else {
+        await applier.applyDelete(id)
+    }
 
-    await prisma.truck.update({
-        where: { id: record.truckId },
-        data: {
-            ...(isNewerService ? { lastServiceDate: record.date } : {}),
-            ...(isHigherMileage ? { mileage: record.mileageAtService! } : {}),
-        },
-    })
+    if (applier.onApplied) await applier.onApplied(before, operation, rawChanges)
+    for (const path of applier.revalidatePaths(before)) revalidatePath(path)
+    return { success: true }
+}
+
+/**
+ * True when this caller's change lands immediately rather than queueing.
+ *
+ * Approvers never queue behind themselves. Neither does a record that has not been
+ * approved yet: it has taken no effect and already awaits sign-off, so stacking a
+ * second approval on top would mean approving the same record twice.
+ */
+function landsImmediately(role: string, approvalStatus: string): boolean {
+    return hasPermission(role, 'approve_maintenance') || approvalStatus === 'Pending'
+}
+
+export async function updateMaintenanceRecord(
+    id: string,
+    formData: FormData
+): Promise<{ success: true; queued?: boolean } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_maintenance')
+
+        const type = formData.get('type') as string
+        const date = formData.get('date') as string
+        const cost = formData.get('cost') as string
+
+        if (!type || !date || !cost) return { error: 'Missing required fields' }
+
+        const mileageAtService = formData.get('mileageAtService') as string
+        const changes = {
+            type,
+            // Stored as JSON on a queued request, so dates go in as ISO strings.
+            date: new Date(date).toISOString(),
+            cost: parseFloat(cost),
+            mileageAtService: mileageAtService ? parseInt(mileageAtService) : null,
+            status: (formData.get('status') as string) || 'Completed',
+            notes: (formData.get('notes') as string) || null,
+            performedBy: (formData.get('performedBy') as string) || null,
+        }
+
+        const existing = await prisma.maintenanceRecord.findUnique({
+            where: { id },
+            select: { approvalStatus: true },
+        })
+        if (!existing) return { error: 'Record not found' }
+        if (existing.approvalStatus === 'Rejected') {
+            return { error: 'A rejected record cannot be edited. Create a new one instead.' }
+        }
+
+        if (landsImmediately(session.user.role, existing.approvalStatus)) {
+            return applyMaintenanceDirect('maintenance_record', id, 'update', changes)
+        }
+
+        const result = await createEditRequest('maintenance_record', id, 'update', changes)
+        if ('error' in result) return result
+        return { success: true, queued: true }
+    } catch (error) {
+        console.error('Failed to update maintenance record:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to update maintenance record' }
+    }
+}
+
+export async function deleteMaintenanceRecord(
+    id: string,
+    reason?: string
+): Promise<{ success: true; queued?: boolean } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_maintenance')
+
+        const existing = await prisma.maintenanceRecord.findUnique({
+            where: { id },
+            select: { approvalStatus: true },
+        })
+        if (!existing) return { error: 'Record not found' }
+
+        if (landsImmediately(session.user.role, existing.approvalStatus)) {
+            return applyMaintenanceDirect('maintenance_record', id, 'delete', {})
+        }
+
+        const result = await createEditRequest('maintenance_record', id, 'delete', {}, reason)
+        if ('error' in result) return result
+        return { success: true, queued: true }
+    } catch (error) {
+        console.error('Failed to delete maintenance record:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to delete maintenance record' }
+    }
 }
 
 export async function getMaintenanceRecords(truckId?: string) {
@@ -383,7 +511,7 @@ export async function approveMaintenanceRecord(id: string): Promise<{ success: t
 
         // Deferred side effects - only now does the truck's history move, and only now
         // does a schedule this record completed advance to its next interval.
-        await applyMaintenanceRecordToTruck(id)
+        await recomputeTruckDerivedValues(record.truckId)
         if (record.scheduleId) {
             await rollScheduleForward(record.scheduleId)
         }
@@ -560,26 +688,93 @@ export async function rejectMaintenanceSchedule(id: string, reason: string): Pro
     }
 }
 
-export async function updateMaintenanceSchedule(id: string, formData: FormData) {
-    const nextDueDate = formData.get('nextDueDate') as string
-    const nextDueMileage = formData.get('nextDueMileage') as string
-    const isActive = formData.get('isActive') === 'true'
+/**
+ * Was gated only on manage_maintenance and wrote straight through, which let a Manager
+ * change an approved schedule's due date with no sign-off - an approve-by-the-back-door
+ * around the creation-approval flow. Now takes the same split as every other
+ * maintenance write.
+ */
+export async function updateMaintenanceSchedule(
+    id: string,
+    formData: FormData
+): Promise<{ success: true; queued?: boolean } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_maintenance')
 
-    const session = await auth()
-    if (!session?.user?.role) throw new Error('Unauthorized')
-    checkPermission(session.user.role, 'manage_maintenance')
+        // Only fields actually present are sent. A blanket read would turn an absent
+        // `isActive` into false and silently deactivate the schedule, and would null
+        // every interval the form did not render.
+        const changes: Record<string, unknown> = {}
+        const text = (name: string) => (formData.get(name) as string | null)?.trim() ?? null
 
-    await prisma.maintenanceSchedule.update({
-        where: { id },
-        data: {
-            nextDueDate: nextDueDate ? new Date(nextDueDate) : null,
+        if (formData.has('type')) changes.type = text('type')
+        if (formData.has('intervalType')) changes.intervalType = text('intervalType')
+        if (formData.has('priority')) changes.priority = text('priority')
+        if (formData.has('notes')) changes.notes = text('notes') || null
+        if (formData.has('isActive')) changes.isActive = formData.get('isActive') === 'true'
+        if (formData.has('nextDueDate')) {
+            const raw = text('nextDueDate')
+            changes.nextDueDate = raw ? new Date(raw).toISOString() : null
+        }
+        for (const field of ['intervalDays', 'intervalMileage', 'nextDueMileage'] as const) {
+            if (formData.has(field)) {
+                const raw = text(field)
+                changes[field] = raw ? parseInt(raw) : null
+            }
+        }
 
-            nextDueMileage: nextDueMileage ? parseInt(nextDueMileage) : null,
-            isActive,
-        },
-    })
+        if (Object.keys(changes).length === 0) return { error: 'No changes submitted' }
 
-    revalidatePath('/trucks')
+        const existing = await prisma.maintenanceSchedule.findUnique({
+            where: { id },
+            select: { approvalStatus: true },
+        })
+        if (!existing) return { error: 'Schedule not found' }
+        if (existing.approvalStatus === 'Rejected') {
+            return { error: 'A rejected schedule cannot be edited. Create a new one instead.' }
+        }
+
+        if (landsImmediately(session.user.role, existing.approvalStatus)) {
+            return applyMaintenanceDirect('maintenance_schedule', id, 'update', changes)
+        }
+
+        const result = await createEditRequest('maintenance_schedule', id, 'update', changes)
+        if ('error' in result) return result
+        return { success: true, queued: true }
+    } catch (error) {
+        console.error('Failed to update maintenance schedule:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to update maintenance schedule' }
+    }
+}
+
+export async function deleteMaintenanceSchedule(
+    id: string,
+    reason?: string
+): Promise<{ success: true; queued?: boolean } | { error: string }> {
+    try {
+        const session = await auth()
+        if (!session?.user?.role) return { error: 'Unauthorized' }
+        checkPermission(session.user.role, 'manage_maintenance')
+
+        const existing = await prisma.maintenanceSchedule.findUnique({
+            where: { id },
+            select: { approvalStatus: true },
+        })
+        if (!existing) return { error: 'Schedule not found' }
+
+        if (landsImmediately(session.user.role, existing.approvalStatus)) {
+            return applyMaintenanceDirect('maintenance_schedule', id, 'delete', {})
+        }
+
+        const result = await createEditRequest('maintenance_schedule', id, 'delete', {}, reason)
+        if ('error' in result) return result
+        return { success: true, queued: true }
+    } catch (error) {
+        console.error('Failed to delete maintenance schedule:', error)
+        return { error: error instanceof Error ? error.message : 'Failed to delete maintenance schedule' }
+    }
 }
 
 export async function completeScheduledMaintenance(scheduleId: string, formData: FormData) {
@@ -640,7 +835,7 @@ export async function completeScheduledMaintenance(scheduleId: string, formData:
     // rolls forward when the record is approved instead.
     if (isAutoApproved) {
         await rollScheduleForward(scheduleId)
-        await applyMaintenanceRecordToTruck(record.id)
+        await recomputeTruckDerivedValues(schedule.truckId)
     }
 
     revalidatePath(`/trucks/${schedule.truckId}`)

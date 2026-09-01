@@ -1,0 +1,14 @@
+{
+  "//": "Runner config for scripts/verify-*.ts. The app's tsconfig.json declares `paths` without a `baseUrl`, which Next resolves on its own but tsconfig-paths cannot anchor, so a plain `ts-node script.ts` fails on any `@/` import. Use: npx ts-node --project tsconfig.scripts.json -r tsconfig-paths/register scripts/<name>.ts",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] },
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false
+  }
+}

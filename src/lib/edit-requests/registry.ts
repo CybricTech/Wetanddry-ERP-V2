@@ -1,11 +1,14 @@
 import { fuelLogApplier } from './fuel-log';
+import { maintenanceRecordApplier } from './maintenance-record';
+import { maintenanceScheduleApplier } from './maintenance-schedule';
 import type { EntityApplier } from './types';
 
-// Only fuel_log is registered. The maintenance appliers designed in
-// 2026-08-31-maintenance-edit-approvals-design.md register here later with no change
-// to the core, the actions, or this file's shape.
+// Every entityType the edit-request flow understands. Adding one is a new applier file
+// plus a line here - the core, the server actions, and this file's shape are untouched.
 const APPLIERS: Record<string, EntityApplier> = {
     fuel_log: fuelLogApplier,
+    maintenance_record: maintenanceRecordApplier,
+    maintenance_schedule: maintenanceScheduleApplier,
 };
 
 export function getApplier(entityType: string): EntityApplier | null {
