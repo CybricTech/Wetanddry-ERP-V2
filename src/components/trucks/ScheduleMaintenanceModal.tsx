@@ -4,6 +4,20 @@ import { createMaintenanceSchedule, updateMaintenanceSchedule } from '@/lib/acti
 import { X, CalendarClock, AlertCircle } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { useState } from 'react'
+import MaintenanceTypeField from './MaintenanceTypeField'
+
+// Presets offered in the dropdown. Anything else is entered through Other, which is
+// why this list does not include it. Deliberately different from the record modal's.
+const SCHEDULE_TYPES = [
+    'Oil Change',
+    'Tire Rotation',
+    'Brake Inspection',
+    'Full Service',
+    'Engine Inspection',
+    'Transmission Service',
+    'Air Filter Replacement',
+    'Coolant Flush',
+] as const
 import { DatePicker } from '@/components/ui/date-picker'
 
 function SubmitButton({ needsApproval, isEditing }: { needsApproval: boolean; isEditing: boolean }) {
@@ -112,28 +126,11 @@ export default function ScheduleMaintenanceModal({ truckId, truckMileage, canApp
                         </div>
                     )}
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Maintenance Type <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                            name="type"
-                            defaultValue={schedule?.type ?? ''}
-                            required
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-                        >
-                            <option value="">Select type</option>
-                            <option value="Oil Change">Oil Change</option>
-                            <option value="Tire Rotation">Tire Rotation</option>
-                            <option value="Brake Inspection">Brake Inspection</option>
-                            <option value="Full Service">Full Service</option>
-                            <option value="Engine Inspection">Engine Inspection</option>
-                            <option value="Transmission Service">Transmission Service</option>
-                            <option value="Air Filter Replacement">Air Filter Replacement</option>
-                            <option value="Coolant Flush">Coolant Flush</option>
-                        </select>
-                    </div>
-
+                    <MaintenanceTypeField
+                        options={SCHEDULE_TYPES}
+                        defaultValue={schedule?.type}
+                        focusRing="focus:ring-green-500"
+                    />
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Interval Type <span className="text-red-500">*</span>
