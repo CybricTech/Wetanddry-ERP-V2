@@ -17,6 +17,7 @@ import CategorySelect from './CategorySelect';
 import CategoryManager, { CustomCategory } from './CategoryManager';
 import RepairsTab, { Repair, RepairStats } from './RepairsTab';
 import { DatePicker } from '@/components/ui/date-picker';
+import { INVENTORY_UNITS } from '@/lib/constants/inventory';
 
 // Type definitions
 interface StorageLocation {
@@ -1731,13 +1732,9 @@ function AddItemModal({ locations, currentUser, allCategories, onClose }: {
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all"
                                 >
                                     <option value="">Select unit</option>
-                                    <option value="kg">Kilograms (kg)</option>
-                                    <option value="liters">Liters</option>
-                                    <option value="pcs">Pieces</option>
-                                    <option value="m³">Cubic Meters (m³)</option>
-                                    <option value="tons">Tons</option>
-                                    <option value="drums">Drums</option>
-                                    <option value="gallons">Gallons</option>
+                                    {INVENTORY_UNITS.map((u) => (
+                                        <option key={u.value} value={u.value}>{u.label}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -2597,11 +2594,9 @@ function ViewItemModal({ item, locations, onClose, permissions, allCategories }:
                                             required
                                             className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all appearance-none"
                                         >
-                                            <option value="kg">Kilograms (kg)</option>
-                                            <option value="liters">Liters</option>
-                                            <option value="pcs">Pieces</option>
-                                            <option value="m³">Cubic Meters (m³)</option>
-                                            <option value="tons">Tons</option>
+                                            {INVENTORY_UNITS.map((u) => (
+                                                <option key={u.value} value={u.value}>{u.label}</option>
+                                            ))}
                                         </select>
                                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                                     </div>
